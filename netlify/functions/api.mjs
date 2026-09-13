@@ -298,7 +298,7 @@ export default async (req) => {
     }, 503);
   }
   const u=new URL(req.url), p=u.pathname.replace(/^\/api\/?/,'');
-  if(p==='health'){const c=await db.sql`SELECT count(*)::int users, count(*) FILTER (WHERE role='admin')::int admins FROM users`; return json({ok:true,app:'MOSTIK',version:'5.3.18',users:c[0].users,admins:c[0].admins});}
+  if(p==='health'){const c=await db.sql`SELECT count(*)::int users, count(*) FILTER (WHERE role='admin')::int admins FROM users`; return json({ok:true,app:'MOSTIK',version:'5.3.23',users:c[0].users,admins:c[0].admins});}
   if(p==='auth/status' && req.method==='GET'){const c=await db.sql`SELECT count(*)::int users, count(*) FILTER (WHERE role='admin')::int admins FROM users`; return json({setup_required:c[0].admins===0,users:c[0].users,admins:c[0].admins});}
   if(p==='auth/register' && req.method==='POST'){
     const b=await parse(req);
@@ -1301,7 +1301,7 @@ export default async (req) => {
     }
 
     // Get / update / delete single diet
-    if(dm && !mealsM && !periodM && !copyM){
+    if(dm && !mealsM && !periodM && !copyM && !activeM){
       const did = dm[1];
       const drows = await db.sql`SELECT * FROM diets WHERE id=${did}`;
       if(!drows.length) return json({error:'Рацион не найден'},404);
