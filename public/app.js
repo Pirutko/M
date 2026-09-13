@@ -1261,7 +1261,7 @@ function animals(c){const r=state.user.effective_role;const canManage=['admin','
     <div id="createPhotoPreview" class="create-photo-preview muted">Фото не выбрано</div>
   </div>
 </div>
-<div class="attention-box"><div class="top"><div><h3>Особенности, требующие внимания</h3><p class="muted">Можно добавить сейчас, но это необязательно.</p></div><button type="button" id="addAttention" class="secondary">＋ Добавить</button></div><div id="attentionFields"></div></div><div class="modal-actions"><button type="button" class="secondary" id="backToAnimalChoice">← Назад</button><button type="submit">Создать животное</button><button type="button" class="secondary" id="cancelCreateAnimal">Отмена</button></div></div></form></div></div>`:''}`;
+<div class="attention-box"><div class="top"><div><h3>Особенности, требующие внимания</h3><p class="muted">Можно добавить сейчас, но это необязательно.</p></div><button type="button" id="addAttention" class="secondary">＋ Добавить</button></div><div id="attentionFields"></div></div><div class="modal-actions"><button type="button" class="secondary" id="backToAnimalChoice">← Назад</button><button type="button" id="createAnimalSubmit">Создать животное</button><button type="button" class="secondary" id="cancelCreateAnimal">Отмена</button></div></div></form></div></div>`:''}`;
  
 const animalSearch=document.querySelector('#animalSearch');
 if(animalSearch){
@@ -1433,7 +1433,7 @@ if(photoInput){
     }catch(err){alert(err.message); createPhotoData=null;}
   };
 }
-modal.querySelector('#animalAdd').onsubmit=async e=>{e.preventDefault();try{const modeVal=document.querySelector('#addModeValue')?.value||'create'; if(modeVal==='join'){document.querySelector('#joinAnimalSubmit')?.click();return;} const f=Object.fromEntries(new FormData(e.target)),attention=[];
+const submitAnimalCreate=async e=>{e.preventDefault();try{const modeVal=document.querySelector('#addModeValue')?.value||'create'; if(modeVal==='join'){document.querySelector('#joinAnimalSubmit')?.click();return;} const f=Object.fromEntries(new FormData(e.target)),attention=[];
 // Client-side validation with field highlight
 const nameEl=e.target.querySelector('[name="name"]');
 const speciesEl=e.target.querySelector('[name="species"]');
@@ -1446,7 +1446,7 @@ for(let i=1;i<=ai;i++){const t=f[`attention_title_${i}`];if(t)attention.push({ca
 const payload={name:f.name,species:f.species,breed:r==='keeper'?'':f.breed,subspecies:r==='keeper'?String(f.subspecies||'').trim():'',sex:f.sex||null,birth_date:f.birth_date||null,weight_kg:f.weight_kg===''?null:Number(f.weight_kg),height_cm:f.height_cm===''?null:Number(f.height_cm),description:String(f.description||''),owner_id:f.owner_id,microchip:String(f.microchip||'').trim()||null,attention};
 if(mode==='icon' && selectedIconId){ payload.avatar_icon=selectedIconId; }
 // if no icon selected and mode icon — backend picks random
-const submitBtn=e.target.querySelector('button[type=submit]');
+const submitBtn=modal.querySelector('#createAnimalSubmit');
 if(submitBtn){submitBtn.disabled=true;submitBtn.dataset.originalText=submitBtn.textContent;submitBtn.textContent='Сохраняю…';}
 let created;
 try{ created=await api('animals',{method:'POST',body:JSON.stringify(payload)}); }catch(err){ if(submitBtn){submitBtn.disabled=false;submitBtn.textContent=submitBtn.dataset.originalText||'Создать животное';} throw err; }
@@ -1460,7 +1460,14 @@ state.animals=(await api('animals')).animals;
 state.animal=state.animals.find(x=>x.id===newId)||state.animals.find(x=>x.name===payload.name)||null;
 if(!state.animal) throw new Error('Животное создано на сервере, но не вернулось в список. Обновите страницу и проверьте доступ.');
 state.skills=state.animal?(await api(`animals/${state.animal.id}/skills`)).skills:[];
-close();render();try{toast('Животное «'+(payload.name||'')+'» создано','ok')}catch{};try{updateNavBadges()}catch{}}catch(x){try{toast(x.message||'Не удалось создать животное','warn')}catch{alert(x.message)}}};}
+close();render();try{toast('Животное «'+(payload.name||'')+'» создано','ok')}catch{};try{updateNavBadges()}catch{}}catch(x){try{toast(x.message||'Не удалось создать животное','warn')}catch{alert(x.message)}}};
+const animalCreateForm=modal.querySelector('#animalAdd');
+modal.querySelector('#createAnimalSubmit')?.addEventListener('click',e=>{
+  e.preventDefault();
+  if(animalCreateForm) submitAnimalCreate({preventDefault:()=>{},target:animalCreateForm});
+});
+animalCreateForm?.addEventListener('submit',e=>{e.preventDefault(); submitAnimalCreate(e);});
+}
 }
 
 async function editAnimalProfile(a,after){
