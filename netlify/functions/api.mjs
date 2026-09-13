@@ -236,6 +236,8 @@ async function ensureSchema(){
     await db.sql`ALTER TABLE observations ADD COLUMN IF NOT EXISTS activity integer`;
     // normalize only nulls; leave valid values as-is
     await db.sql`UPDATE animals SET avatar_icon='1' WHERE avatar_icon IS NULL OR btrim(avatar_icon)=''`;
+    // Self-heal legacy installations: keeper access must always have a real environment link.
+    await db.sql`CREATE TABLE IF NOT EXISTS animal_access (user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE, animal_id text NOT NULL REFERENCES animals(id) ON DELETE CASCADE, PRIMARY KEY(user_id, animal_id))`;
     // animal_access uniqueness for join-by-id
     await db.sql`CREATE UNIQUE INDEX IF NOT EXISTS animal_access_user_animal_unique ON animal_access(user_id, animal_id)`;
     // Production: audit trail (042) — safe if migrations not yet applied manually
@@ -685,16 +687,20 @@ export default async (req) => {
           // Для кипера животное должно быть одновременно создано и явно
           // прикреплено к его окружению. Не полагаемся только на owner_id.
           await db.sql`INSERT INTO animal_access(user_id,animal_id) VALUES(${me.id},${aid}) ON CONFLICT (user_id, animal_id) DO NOTHING`;
-          const attached=await db.sql`SELECT 1 FROM animal_access WHERE user_id=${me.id} AND animal_id=${aid} LIMIT 1`;
-          if(!attached.length){
-            await db.sql`DELETE FROM animals WHERE id=${aid}`;
-            return json({error:'Животное создано, но не удалось добавить его в окружение кипера. Попробуйте ещё раз.'},500);
-          }
         }catch(e){
-          try{await db.sql`DELETE FROM animals WHERE id=${aid}`;}catch{}
-          console.error('keeper animal access failed',e?.message||e);
-          return json({error:'Не удалось сохранить животное в окружении кипера. Проверьте доступ к базе данных.'},500);
+          // Старые базы могли не иметь таблицу/ограничение animal_access.
+          // Восстанавливаем минимальную структуру и повторяем привязку.
+          try{
+            await db.sql`CREATE TABLE IF NOT EXISTS animal_access (user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE, animal_id text NOT NULL REFERENCES animals(id) ON DELETE CASCADE, PRIMARY KEY(user_id, animal_id))`;
+            await db.sql`CREATE UNIQUE INDEX IF NOT EXISTS animal_access_user_animal_unique ON animal_access(user_id, animal_id)`;
+            await db.sql`INSERT INTO animal_access(user_id,animal_id) VALUES(${me.id},${aid}) ON CONFLICT DO NOTHING`;
+          }catch(e2){
+            console.error('keeper animal access failed',e2?.message||e2);
+            return json({error:'Не удалось добавить животное в окружение кипера: '+String(e2?.message||e?.message||'ошибка базы данных')},500);
+          }
         }
+        const attached=await db.sql`SELECT 1 FROM animal_access WHERE user_id=${me.id} AND animal_id=${aid} LIMIT 1`;
+        if(!attached.length) return json({error:'Животное создано, но связь с окружением кипера не подтверждена'},500);
       }
       const saved=await db.sql`SELECT id,name,species,owner_id FROM animals WHERE id=${aid} LIMIT 1`;
       if(!saved.length) return json({error:'Животное не сохранилось в базе данных'},500);
