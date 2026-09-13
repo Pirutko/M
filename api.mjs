@@ -159,6 +159,12 @@ function cookie(id){
   const secure = isProd && process.env.NETLIFY_DEV !== 'true' ? '; Secure' : '';
   return `mostik_session=${encodeURIComponent(id)}; Path=/; HttpOnly${secure}; SameSite=Lax; Max-Age=2592000`;
 }
+/** Clear session cookie with the same Path/SameSite/Secure attributes as cookie(). */
+function clearCookie(){
+  const isProd = process.env.NODE_ENV === 'production' || process.env.CONTEXT === 'production' || process.env.NETLIFY === 'true' && process.env.CONTEXT !== 'dev';
+  const secure = isProd && process.env.NETLIFY_DEV !== 'true' ? '; Secure' : '';
+  return `mostik_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secure}`;
+}
 function sid(req){return (req.headers.get('cookie')||'').match(/(?:^|;\s*)mostik_session=([^;]+)/)?.[1]||null}
 async function user(req){
   const s=sid(req); if(!s)return null;
@@ -298,7 +304,7 @@ export default async (req) => {
     }, 503);
   }
   const u=new URL(req.url), p=u.pathname.replace(/^\/api\/?/,'');
-  if(p==='health'){const c=await db.sql`SELECT count(*)::int users, count(*) FILTER (WHERE role='admin')::int admins FROM users`; return json({ok:true,app:'MOSTIK',version:'5.3.23',users:c[0].users,admins:c[0].admins});}
+  if(p==='health'){const c=await db.sql`SELECT count(*)::int users, count(*) FILTER (WHERE role='admin')::int admins FROM users`; return json({ok:true,app:'MOSTIK',version:'5.3.24',users:c[0].users,admins:c[0].admins});}
   if(p==='auth/status' && req.method==='GET'){const c=await db.sql`SELECT count(*)::int users, count(*) FILTER (WHERE role='admin')::int admins FROM users`; return json({setup_required:c[0].admins===0,users:c[0].users,admins:c[0].admins});}
   if(p==='auth/register' && req.method==='POST'){
     const b=await parse(req);
@@ -394,11 +400,12 @@ export default async (req) => {
     return json({ok:true},200,{'set-cookie':cookie(sessionId)});
   }
   if(p==='auth/logout'){
+    // Accept GET (legacy) and POST (preferred from client doLogout)
     const s=sid(req);
     const meLogout=s?await user(req):null;
     if(s) await db.sql`DELETE FROM sessions_auth WHERE id=${s}`;
     await audit(meLogout,'logout',{ip:clientIp(req)});
-    return json({ok:true},200,{'set-cookie':`mostik_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${(process.env.NETLIFY_DEV==='true'||process.env.CONTEXT==='dev')?'':'; Secure'}`});
+    return json({ok:true},200,{'set-cookie':clearCookie()});
   }
   // Client/server error telemetry may be submitted before login so auth-screen failures are visible to admins.
   if(p==='telemetry/errors' && req.method==='POST'){
@@ -1301,7 +1308,7 @@ export default async (req) => {
     }
 
     // Get / update / delete single diet
-    if(dm && !mealsM && !periodM && !copyM && !activeM){
+    if(dm && !mealsM && !periodM && !copyM){
       const did = dm[1];
       const drows = await db.sql`SELECT * FROM diets WHERE id=${did}`;
       if(!drows.length) return json({error:'Рацион не найден'},404);

@@ -1,38 +1,49 @@
-MOSTIK patch v5.3.23 — diets/active 404 fix + demo diets
-========================================================
+MOSTIK patch v5.3.24 — надёжный Logout
+======================================
 
 Содержимое
 ----------
-netlify/functions/api.mjs     — исправленный API (версия 5.3.23)
-api.mjs                       — зеркало корня (если используете)
-package.json                  — version 5.3.23
-netlify/database/migrations/052_demo_diets_active.sql
-PATCH_NOTES_v5.3.23.txt
-scripts/test_diets_active.sh
-docs/templates/diets_active_responses.md
+app.js                          — клиент (doLogout + credentials + ?logout=1)
+api.mjs                         — зеркало корня API
+netlify/functions/api.mjs       — Netlify Function (тот же код)
+package.json                    — version 5.3.24
+PATCH_NOTES_v5.3.24.txt
+README_INSTALL.txt
 
-Установка в репозиторий
------------------------
-1. Скопируйте файлы поверх проекта MOSTIK (сохраняя пути):
-     cp netlify/functions/api.mjs  <repo>/netlify/functions/api.mjs
-     cp api.mjs                    <repo>/api.mjs   # опционально
-     cp package.json               <repo>/package.json
-     cp netlify/database/migrations/052_demo_diets_active.sql \
-        <repo>/netlify/database/migrations/
+Установка
+---------
+1. Из корня репозитория MOSTIK:
 
-2. Commit + push в main (Netlify задеплоит сам):
-     git add netlify/functions/api.mjs api.mjs package.json \
-             netlify/database/migrations/052_demo_diets_active.sql
-     git commit -m "fix(api): diets/active 404 (v5.3.23)"
-     git push
+   cp app.js                    <repo>/app.js
+   cp api.mjs                   <repo>/api.mjs
+   cp netlify/functions/api.mjs <repo>/netlify/functions/api.mjs
+   cp package.json              <repo>/package.json
 
-3. Миграция БД (Netlify Database / Neon SQL Editor):
-     выполните содержимое 052_demo_diets_active.sql целиком.
+   (в этом архиве netlify/functions/api.mjs лежит как
+    netlify/functions/api.mjs после распаковки — см. структуру ниже)
 
-4. Проверка:
-     BASE=https://mostikik.netlify.app ./scripts/test_diets_active.sh
-   или вручную: войти demo.owner@mostik.local / demo123,
-   открыть животное «Байкал», Network → diets/active → 200.
+2. Commit + push:
 
-Без миграции 052 API после фикса всё равно отдаёт 200 {active:null,meals:[]}
-вместо 404 — этого достаточно, чтобы убрать ошибку в консоли.
+   git add app.js api.mjs netlify/functions/api.mjs package.json
+   git commit -m "fix(auth): reliable logout (v5.3.24)"
+   git push
+
+3. После деплоя:
+
+   - Открыть https://mostikik.netlify.app
+   - Войти любым demo-* / demo123
+   - «Выйти» → должен появиться экран входа
+   - F5 → остаётесь на экране входа
+   - GET /api/health → {"version":"5.3.24",...}
+
+Структура архива после распаковки
+---------------------------------
+MOSTIK_patch_v5.3.24/
+  app.js
+  api.mjs
+  package.json
+  PATCH_NOTES_v5.3.24.txt
+  README_INSTALL.txt
+  netlify/
+    functions/
+      api.mjs

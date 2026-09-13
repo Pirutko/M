@@ -1,20 +1,6 @@
 {
-  "name": "mostik-netlify",
+  "name": "mostik",
+  "version": "5.3.24",
   "private": true,
-  "type": "module",
-  "version": "5.3.23",
-  "engines": {
-    "node": ">=22.12.0"
-  },
-  "scripts": {
-    "build": "echo MOSTIK Netlify build ready",
-    "dev": "npx netlify dev",
-    "check": "node --check netlify/functions/api.mjs && node --check netlify/functions/health.mjs",
-    "health": "node -e \"fetch(process.env.URL||'http://localhost:8888/api/health').then(r=>r.json()).then(console.log).catch(e=>console.error(e))\""
-  },
-  "dependencies": {
-    "@netlify/functions": "^6.0.0",
-    "@netlify/database": "^2.0.1",
-    "postgres": "^3.4.9"
-  }
+  "description": "MOSTIK — единое пространство для владельца, тренера, ветеринара и кипера"
 }

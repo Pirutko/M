@@ -187,7 +187,7 @@ const api=async(path,opt={})=>{
   }
   const request=(async()=>{
     let r;
-    try{ r=await fetch('/api/'+path,{headers:{'content-type':'application/json',...(opt.headers||{})},...opt}); }
+    try{ r=await fetch('/api/'+path,{credentials:'include',headers:{'content-type':'application/json',...(opt.headers||{})},...opt}); }
     catch(fetchErr){ reportClientError({message:fetchErr?.message||'Network error',stack:fetchErr?.stack,path:'/api/'+path,method,status:0}); throw fetchErr; }
     const d=await r.json().catch(()=>({}));
     if(!r.ok){ reportClientError({message:d.error||d.message||`Ошибка API (${r.status})`,path:'/api/'+path,method,status:r.status,metadata:{api_error:d.code||''}}); throw Error(friendlyError(d.error||d.message||`Ошибка API (${r.status})`, r.status)); }
@@ -637,6 +637,27 @@ function openCommandPalette(){
 async function init(){
   let d;
 
+  // Force clean logout boot: skip session restore and show auth screen
+  try{
+    const q=new URLSearchParams(location.search);
+    if(q.has('logout')){
+      try{
+        const keys=[];
+        for(let i=0;i<localStorage.length;i++){
+          const k=localStorage.key(i);
+          if(k && k.startsWith('mostik_')) keys.push(k);
+        }
+        keys.forEach(k=>localStorage.removeItem(k));
+      }catch{}
+      try{ sessionStorage.clear(); }catch{}
+      try{ apiCache.clear(); apiPending.clear(); }catch{}
+      state.user=null; state.animals=[]; state.animal=null;
+      if(history.replaceState) history.replaceState(null,'',location.pathname||'/');
+      renderAuth();
+      return;
+    }
+  }catch{}
+
   try {
     d = await api('me');
   } catch(e) {
@@ -713,16 +734,36 @@ function initErrorTelemetry(){
   window.addEventListener('unhandledrejection',e=>{const r=e.reason;reportClientError({message:r?.message||String(r||'Unhandled promise rejection'),stack:r?.stack||'',path:location.pathname,method:'',status:0})},true);
 }
 
+
+async function doLogout(e){
+  if(e){e.preventDefault();e.stopPropagation()}
+  if(!confirm('Выйти из MOSTIK?')) return;
+  try{ await api('auth/logout',{method:'POST'}); }catch{}
+  try{
+    const keys=[];
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);
+      if(k && (k.startsWith('mostik_') || k==='mostik_session')) keys.push(k);
+    }
+    keys.forEach(k=>localStorage.removeItem(k));
+  }catch{}
+  try{ sessionStorage.clear(); }catch{}
+  try{ apiCache.clear(); apiPending.clear(); }catch{}
+  state.user=null; state.animals=[]; state.animal=null; state.skills=[]; state.dueReminders=[];
+  // Single hard navigation — avoids race of href+reload and forces clean boot
+  location.replace('/?logout=1');
+}
+
 function bindShell(){
  document.querySelector('#openCmdPalette')?.addEventListener('click',()=>openCommandPalette());
  const nav=document.querySelector('aside');
  if(nav){
   nav.onclick=null;
   nav.querySelectorAll('[data-view]').forEach(b=>{b.onclick=e=>{e.preventDefault();e.stopPropagation();view(b.dataset.view);return false}});
-  document.querySelector('#logoutNavBtn')?.addEventListener('click',async e=>{e.preventDefault();e.stopPropagation();if(confirm('Выйти из MOSTIK?')){try{await api('auth/logout')}catch{}try{localStorage.removeItem('mostik_active_animal')}catch{}state.user=null;state.animals=[];state.animal=null;location.href='/?logout=1';location.reload()}});
+  document.querySelector('#logoutNavBtn')?.addEventListener('click',doLogout);
  }
  document.querySelectorAll('[data-quick]').forEach(b=>b.onclick=()=>quick(b.dataset.quick));
- document.querySelector('#logout')?.addEventListener('click',async()=>{try{await api('auth/logout')}catch{}try{localStorage.removeItem('mostik_active_animal')}catch{}state.user=null;state.animals=[];state.animal=null;location.href='/?logout=1';location.reload()});
+ document.querySelector('#logout')?.addEventListener('click',doLogout);
  const roleSel=document.querySelector('#activeRole');
  if(roleSel)roleSel.onchange=async e=>{
    const next=e.target.value;
