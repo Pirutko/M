@@ -138,46 +138,6 @@ async function installMostik(){
 if('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
 /* MOSTIK 5.0: unified workspace */
 let state={homeRenderSeq:0,scopeSort:'date_desc',user:null,animals:[],animal:null,animalCatalog:[],skills:[],selected:[],timer:null,started:null,seconds:0,authMode:'login',adminUsers:[],grants:[],roles:[],activeRole:null,homework:[],vet:[],observations:[],food:[],today:null,repeat:null,repeatTraining:null,defaults:null,reminders:[],dueReminders:[],insight:null,allOverview:[]};
-function normalizeAnimals(rows){
-  const input=Array.isArray(rows)?rows:[];
-  const byId=new Map(), byIdentity=new Map();
-  for(const raw of input){
-    if(!raw || raw.id==null) continue;
-    const a=raw;
-    const id=String(a.id);
-    if(byId.has(id)) continue;
-    const norm=v=>String(v??'').trim().toLocaleLowerCase('ru-RU');
-    // Only collapse records that look like the same database entity.
-    // The ID remains authoritative; different animals with the same name are kept.
-    const identity=[
-      norm(a.owner_id), norm(a.name), norm(a.species), norm(a.breed),
-      norm(a.subspecies), norm(a.birth_date), norm(a.microchip)
-    ].join('|');
-    if(identity && byIdentity.has(identity)){
-      const existing=byIdentity.get(identity);
-      // Prefer a record with richer data, but never expose both cards.
-      const score=x=>['description','avatar_icon','status','attention','health_features','development_features'].reduce((n,k)=>n+(x?.[k]!=null&&x[k]!==''?1:0),0);
-      if(score(a)>score(existing)){
-        byId.delete(String(existing.id));
-        byIdentity.set(identity,a);
-        byId.set(id,a);
-      }
-      continue;
-    }
-    byId.set(id,a);
-    if(identity) byIdentity.set(identity,a);
-  }
-  return [...byId.values()];
-}
-function setAnimals(rows){
-  state.animals=normalizeAnimals(rows);
-  if(state.animal){
-    const current=state.animals.find(a=>String(a.id)===String(state.animal.id));
-    state.animal=current||state.animal;
-  }
-  return state.animals;
-}
-
 const apiCache=new Map(),apiPending=new Map();
 
 function toast(msg, kind='ok'){
@@ -688,7 +648,7 @@ async function init(){
   state.user = d.user;
 
   try {
-    setAnimals((await api('animals')).animals || []);
+    state.animals = (await api('animals')).animals || [];
 
     const pref = getSettings();
 
@@ -748,9 +708,22 @@ async function startReminderWatcher(){
 async function track(type,data={}){try{if(!state.user)return;await api('insight/events',{method:'POST',body:JSON.stringify({event_type:type,screen:data.screen||null,target:data.target||null,metadata:data.metadata||{}})})}catch{}}
 function initInsightTracking(){document.addEventListener('click',e=>{const b=e.target.closest('button,[data-view],[data-quick]');if(!b)return;track(b.dataset.view?'navigation':(b.dataset.quick?'quick_action':'button_click'),{screen:document.querySelector('#content h2')?.textContent?.slice(0,80)||null,target:(b.dataset.view||b.dataset.quick||b.textContent||'').trim().slice(0,80)});},true);document.addEventListener('submit',e=>{track('form_submit',{screen:document.querySelector('#content h2')?.textContent?.slice(0,80)||null,target:e.target.id||e.target.className||'form'})},true);document.addEventListener('change',e=>{if(e.target?.id==='animal')track('animal_change',{target:e.target.value})},true)}
 
+function showAppError(error,context='global'){
+  if(window.__mostikFatalShown)return;
+  window.__mostikFatalShown=true;
+  const err=error instanceof Error?error:new Error(String(error??'Unknown error'));
+  console.error('[MOSTIK SPA ERROR]',{context,message:err.message,stack:err.stack||'',url:location.href,timestamp:new Date().toISOString()});
+  const c=document.querySelector('#content')||document.querySelector('#app')||document.body;
+  if(!c)return;
+  const message=typeof esc==='function'?esc(err.message):String(err.message).replace(/[<>&]/g,x=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[x]));
+  c.innerHTML=`<section class="card app-error" role="alert"><h2>Не удалось открыть раздел</h2><p class="muted">Произошла ошибка при отображении страницы. Ваши данные не удалены.</p><div class="app-error-actions"><button type="button" id="appErrorRetry">Повторить</button><button type="button" class="secondary" id="appErrorHome">На главную</button></div><details><summary>Техническая информация</summary><pre>${message}</pre></details></section>`;
+  document.querySelector('#appErrorRetry')?.addEventListener('click',()=>location.reload());
+  document.querySelector('#appErrorHome')?.addEventListener('click',()=>{window.__mostikFatalShown=false;try{view('home')}catch(e){location.href='/'}});
+}
+
 function initErrorTelemetry(){
-  window.addEventListener('error',e=>{reportClientError({message:e.message||'JavaScript error',stack:e.error?.stack||'',path:e.filename||location.pathname,method:'',status:0,metadata:{line:e.lineno||0,column:e.colno||0}})},true);
-  window.addEventListener('unhandledrejection',e=>{const r=e.reason;reportClientError({message:r?.message||String(r||'Unhandled promise rejection'),stack:r?.stack||'',path:location.pathname,method:'',status:0})},true);
+  window.addEventListener('error',e=>{const r=e.error||new Error(e.message||'JavaScript error');reportClientError({message:r.message||'JavaScript error',stack:r.stack||'',path:e.filename||location.pathname,method:'',status:0,metadata:{line:e.lineno||0,column:e.colno||0}});showAppError(r,'window.error')},true);
+  window.addEventListener('unhandledrejection',e=>{const r=e.reason instanceof Error?e.reason:new Error(String(e.reason||'Unhandled promise rejection'));reportClientError({message:r.message,stack:r.stack||'',path:location.pathname,method:'',status:0});showAppError(r,'unhandledrejection')},true);
 }
 
 function bindShell(){
@@ -820,51 +793,40 @@ async function updateNavBadges(){
     });
   }catch(e){ console.warn('nav badges', e); }
 }
-function showViewCrash(c,v,error){
-  console.error('MOSTIK view crashed:',v,error);
-  if(!c)return;
-  c.setAttribute('aria-busy','false');
-  c.innerHTML=`<div class="card empty-state view-error-boundary" role="alert">
-    <div class="empty-icon" aria-hidden="true">⚠</div>
-    <h2>Не удалось открыть раздел</h2>
-    <p class="muted">Раздел «${esc(String(v||'').replace(/</g,'&lt;'))}» столкнулся с ошибкой. Данные не потеряны. Попробуйте открыть раздел ещё раз.</p>
-    <div class="empty-actions">
-      <button type="button" class="primary" id="retryView">Повторить</button>
-      <button type="button" class="secondary" id="goHomeAfterCrash">На главную</button>
-    </div>
-  </div>`;
-  c.querySelector('#retryView')?.addEventListener('click',()=>view(v));
-  c.querySelector('#goHomeAfterCrash')?.addEventListener('click',()=>view(defaultViewForRole()));
-}
 function view(v){
+ try{return viewUnsafe(v)}catch(e){showAppError(e,`view:${v}`)}
+}
+function viewUnsafe(v){
  const active=v==='home'?'home':v;
+ // Always clear first so only one nav item is highlighted
  document.querySelectorAll('aside [data-view]').forEach(b=>{
    b.classList.remove('active');
    if(b.dataset.view===active) b.classList.add('active');
  });
  const c=document.querySelector('#content');
- if(!c)return;
- c.setAttribute('aria-busy','true');
- const handlers={
-   home,animals,journal,skills,training,trainingTemplates,smartTemplates,observations,
-   analytics,vet,enrichment,food,admin,adminErrors,insight,settings,developmentFeatures,
-   calendar,reminders,careOverview
- };
- try{
-   let result;
-   if(v==='diets'){state.foodTab='plan';result=food(c);}
-   else if(handlers[v]) result=handlers[v](c);
-   else result=home(c);
-   c.setAttribute('aria-busy','false');
-   if(result && typeof result.then==='function'){
-     result.catch(e=>showViewCrash(c,v,e));
-   }
- }catch(e){
-   showViewCrash(c,v,e);
- }
- setTimeout(()=>{try{enhanceSmartFields(c)}catch(e){console.warn('smart fields',e)}},80);
+ if(v==='home')home(c);
+ if(v==='animals')animals(c);
+ if(v==='journal')journal(c);
+ if(v==='skills')skills(c);
+ if(v==='training')training(c);
+ if(v==='training-templates')trainingTemplates(c);
+ if(v==='smart-templates')smartTemplates(c);
+ if(v==='observations')observations(c);
+ if(v==='analytics')analytics(c);
+ if(v==='vet')vet(c);
+ if(v==='enrichment')enrichment(c);
+ if(v==='food')food(c);
+ if(v==='diets'){state.foodTab='plan';food(c);}
+ if(v==='admin')admin(c);
+ if(v==='admin-errors')adminErrors(c);
+ if(v==='insight')insight(c);
+ if(v==='settings')settings(c);
+ if(v==='development')developmentFeatures(c);
+ if(v==='calendar')calendar(c);
+ if(v==='reminders')reminders(c);
+ if(v==='care-overview')careOverview(c);
+ setTimeout(()=>enhanceSmartFields(c),80);
 }
-
 function localDayBounds(){const d=new Date();d.setHours(0,0,0,0);const e=new Date(d);e.setDate(e.getDate()+1);return {from:d.toISOString(),to:e.toISOString(),label:d.toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'})}}
 function animalSpeciesIcon(a){
   let iconId = a?.avatar_icon;
@@ -1139,7 +1101,7 @@ function developmentFeatures(c){
  const canEdit=['admin','owner'].includes(state.user.effective_role);
  c.innerHTML=`<div class="health-management card"><div class="top"><div><span class="health-kicker"><span class="ui-emoji" aria-hidden="true">✚</span> ОБЯЗАТЕЛЬНО К ПРОВЕРКЕ ПЕРЕД РАБОТОЙ</span><h2>Особенности здоровья · ${esc(state.animal.name)}</h2><p class="muted">Эти сведения всегда показываются специалистам, имеющим доступ к животному.</p></div></div>${(['admin','owner','vet'].includes(state.user.effective_role))?`<form id="healthFeatureForm" class="health-feature-form"><label>Особенность здоровья<select name="preset">${HEALTH_PRESETS.map(x=>`<option value="${x.type}">${x.title}</option>`).join('')}</select></label><label>Название / уточнение<input name="title" placeholder="Например: аллергия на курицу" required></label><div class="formgrid"><label>Важность<select name="severity"><option value="critical">Критично — специалист обязан учитывать</option><option value="important" selected>Важно — учитывать в работе</option><option value="info">Информация</option></select></label><label>Статус<select name="status"><option value="observation">Наблюдение</option><option value="suspected">Подозрение</option><option value="confirmed">Подтверждено врачом</option></select></label></div><label>Что важно знать специалисту<textarea name="note" placeholder="Ограничения, триггеры, лекарства, рекомендации и т. п."></textarea></label><button>Добавить особенность здоровья</button></form>`:''}<div id="healthFeatureList"><p class="muted">Загружаю…</p></div></div><div class="card"><div class="top"><div><h2>Особенности развития и поведения · ${esc(state.animal.name)}</h2><p class="muted">Это не автоматические диагнозы. Здесь фиксируются подтверждённые состояния, предположения и наблюдения.</p></div><button type="button" class="secondary" id="backAnimals">← К животным</button></div>${canEdit?`<form id="devFeatureForm" class="animal-form"><label>Категория<select name="category">${developmentFeatureCategories().map(x=>`<option>${x}</option>`).join('')}</select></label><label>Особенность<input name="title" placeholder="Например: трудности концентрации, чувствительность к звукам" required></label><label>Статус<select name="status"><option value="observation">Наблюдение</option><option value="suspected">Предположение</option><option value="confirmed">Подтверждено врачом/специалистом</option></select></label><label>Комментарий / описание<textarea name="note" placeholder="Что именно наблюдается, при каких условиях, рекомендации специалиста"></textarea></label><button>Добавить особенность</button></form>`:''}<div id="devFeatureList"><p class="muted">Загружаю…</p></div></div>`;
  document.querySelector('#backAnimals').onclick=()=>animals(c);
- const loadHealth=()=>api(`animals/${encodeURIComponent(state.animal.id)}/health-features`).then(d=>{const list=d.features||[];document.querySelector('#healthFeatureList').innerHTML=list.length?`<div class="health-list"><h3>Сведения, которые специалист должен видеть</h3>${list.map(x=>`<article class="health-item ${x.severity==='critical'?'critical':x.severity==='important'?'important':''}"><div><span class="health-title">${esc(x.title)}</span><span class="health-badges"><em>${esc(healthSeverityLabel(x.severity))}</em><em>${esc(healthStatusLabel(x.status))}</em></span>${x.note?`<p>${esc(x.note)}</p>`:''}</div>${['admin','owner','vet'].includes(state.user.effective_role)?`<div class="actions"><button type="button" class="danger delete-health" data-id="${x.id}">Удалить</button></div>`:''}</article>`).join('')}</div>`:'<p class="muted">Особенности здоровья пока не добавлены.</p>';document.querySelectorAll('.delete-health').forEach(b=>b.onclick=async()=>{if(!confirm('Удалить эту особенность здоровья?'))return;await api(`animals/${state.animal.id}/health-features`,{method:'DELETE',body:JSON.stringify({id:b.dataset.id})});const all=(await api('animals')).animals;setAnimals(all);state.animal=all.find(a=>a.id===state.animal.id)||state.animal;loadHealth();renderHealthBannerOnly()})}).catch(e=>document.querySelector('#healthFeatureList').innerHTML=`<p class="error">${esc(e.message)}</p>`);
+ const loadHealth=()=>api(`animals/${encodeURIComponent(state.animal.id)}/health-features`).then(d=>{const list=d.features||[];document.querySelector('#healthFeatureList').innerHTML=list.length?`<div class="health-list"><h3>Сведения, которые специалист должен видеть</h3>${list.map(x=>`<article class="health-item ${x.severity==='critical'?'critical':x.severity==='important'?'important':''}"><div><span class="health-title">${esc(x.title)}</span><span class="health-badges"><em>${esc(healthSeverityLabel(x.severity))}</em><em>${esc(healthStatusLabel(x.status))}</em></span>${x.note?`<p>${esc(x.note)}</p>`:''}</div>${['admin','owner','vet'].includes(state.user.effective_role)?`<div class="actions"><button type="button" class="danger delete-health" data-id="${x.id}">Удалить</button></div>`:''}</article>`).join('')}</div>`:'<p class="muted">Особенности здоровья пока не добавлены.</p>';document.querySelectorAll('.delete-health').forEach(b=>b.onclick=async()=>{if(!confirm('Удалить эту особенность здоровья?'))return;await api(`animals/${state.animal.id}/health-features`,{method:'DELETE',body:JSON.stringify({id:b.dataset.id})});const all=(await api('animals')).animals;state.animals=all;state.animal=all.find(a=>a.id===state.animal.id)||state.animal;loadHealth();renderHealthBannerOnly()})}).catch(e=>document.querySelector('#healthFeatureList').innerHTML=`<p class="error">${esc(e.message)}</p>`);
  document.querySelector('#healthFeatureForm')?.addEventListener('submit',async e=>{e.preventDefault();try{const b=Object.fromEntries(new FormData(e.target));await api(`animals/${state.animal.id}/health-features`,{method:'POST',body:JSON.stringify({feature_type:b.preset,title:b.title,severity:b.severity,status:b.status,note:b.note})});e.target.reset();loadHealth()}catch(err){alert(err.message)}});
  const load=()=>api(`animals/${encodeURIComponent(state.animal.id)}/development-features`).then(d=>{const list=d.features||[];document.querySelector('#devFeatureList').innerHTML=list.length?`<h3>Зафиксированные особенности</h3><div class="grid">${list.map(x=>`<article class="timeline"><b>${esc(x.title)}</b><small>${esc(x.category)} · ${developmentFeatureLabel(x.status)}</small>${x.note?`<p>${esc(x.note)}</p>`:''}${canEdit?`<div class="actions"><button type="button" class="secondary edit-dev" data-id="${x.id}">Редактировать</button><button type="button" class="danger delete-dev" data-id="${x.id}">Удалить</button></div>`:''}</article>`).join('')}</div>`:'<p class="muted">Особенности пока не добавлены.</p>';document.querySelectorAll('.edit-dev').forEach(b=>b.onclick=()=>editDevelopmentFeature(c,list.find(x=>x.id===b.dataset.id)));document.querySelectorAll('.delete-dev').forEach(b=>b.onclick=async()=>{if(!confirm('Удалить эту особенность?'))return;await api(`animals/${state.animal.id}/development-features`,{method:'DELETE',body:JSON.stringify({id:b.dataset.id})});load()})}).catch(e=>document.querySelector('#devFeatureList').innerHTML=`<p class="error">${esc(e.message)}</p>`);
  document.querySelector('#devFeatureForm')?.addEventListener('submit',async e=>{e.preventDefault();try{const b=Object.fromEntries(new FormData(e.target));await api(`animals/${state.animal.id}/development-features`,{method:'POST',body:JSON.stringify(b)});e.target.reset();load()}catch(x){alert(x.message)}});load();
@@ -1182,7 +1144,7 @@ function printAnimalCard(a){
 
 function photoMarkup(a, cls='animal-avatar'){return a?.photo_data?`<img class="${cls} animal-photo" src="${esc(a.photo_data)}" alt="Фото ${esc(a.name||'животного')}">`:`<span class="${cls}">${animalSpeciesIcon(a)}</span>`}
 async function fileToCompressedDataUrl(file){return await new Promise((resolve,reject)=>{const r=new FileReader();r.onerror=()=>reject(new Error('Не удалось прочитать фото'));r.onload=()=>{const img=new Image();img.onload=()=>{const max=1200,scale=Math.min(1,max/Math.max(img.width,img.height)),w=Math.max(1,Math.round(img.width*scale)),h=Math.max(1,Math.round(img.height*scale));const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d',{alpha:true});ctx.drawImage(img,0,0,w,h);resolve(canvas.toDataURL('image/webp',0.82))};img.onerror=()=>reject(new Error('Не удалось открыть изображение'));img.src=r.result};r.readAsDataURL(file)})}
-function photoEditor(c,a,after){const can=['admin','owner'].includes(state.user.effective_role); if(!can){alert('Фото профиля может менять администратор или владелец.');return;} const old=a?.photo_data||''; const wrap=document.createElement('div'); wrap.className='modal-backdrop'; wrap.innerHTML=`<div class="modal-card photo-modal" role="dialog" aria-modal="true"><div class="top"><div><h2>Фото профиля</h2><p class="muted">${esc(a.name)} · фото будет автоматически сжато для быстрой загрузки.</p></div><button type="button" class="secondary photo-close">×</button></div><div class="photo-preview">${old?`<img src="${esc(old)}" alt="Фото">`:`<div class="photo-placeholder">${animalSpeciesIcon(a)}</div>`}</div><label class="file-label">Выбрать фото<input id="animalPhotoFile" type="file" accept="image/*" hidden></label><div class="actions"><button type="button" class="primary photo-save" disabled>Сохранить фото</button>${old?`<button type="button" class="danger photo-delete">Удалить фото</button>`:''}</div></div>`;document.body.append(wrap);const close=()=>wrap.remove();wrap.querySelector('.photo-close').onclick=close;wrap.addEventListener('click',e=>{if(e.target===wrap)close()});let data=old;const file=wrap.querySelector('#animalPhotoFile');const save=wrap.querySelector('.photo-save');file.onchange=async()=>{const f=file.files?.[0];if(!f)return;try{data=await fileToCompressedDataUrl(f);wrap.querySelector('.photo-preview').innerHTML=`<img src="${esc(data)}" alt="Предпросмотр">`;save.disabled=false;}catch(e){alert(e.message)}};save.onclick=async()=>{try{save.disabled=true;await api(`animals/${a.id}/photo`,{method:'PUT',body:JSON.stringify({photo_data:data})});setAnimals((await api('animals')).animals);a=state.animals.find(x=>x.id===a.id)||a;if(state.animal?.id===a.id)state.animal=a;close();after?.(a);}catch(e){save.disabled=false;alert(e.message)}};wrap.querySelector('.photo-delete')?.addEventListener('click',async()=>{if(!confirm('Удалить фото профиля?'))return;try{await api(`animals/${a.id}/photo`,{method:'DELETE'});setAnimals((await api('animals')).animals);a=state.animals.find(x=>x.id===a.id)||a;if(state.animal?.id===a.id)state.animal=a;close();after?.(a);}catch(e){alert(e.message)}});wrap.querySelector('.file-label').focus?.()}
+function photoEditor(c,a,after){const can=['admin','owner'].includes(state.user.effective_role); if(!can){alert('Фото профиля может менять администратор или владелец.');return;} const old=a?.photo_data||''; const wrap=document.createElement('div'); wrap.className='modal-backdrop'; wrap.innerHTML=`<div class="modal-card photo-modal" role="dialog" aria-modal="true"><div class="top"><div><h2>Фото профиля</h2><p class="muted">${esc(a.name)} · фото будет автоматически сжато для быстрой загрузки.</p></div><button type="button" class="secondary photo-close">×</button></div><div class="photo-preview">${old?`<img src="${esc(old)}" alt="Фото">`:`<div class="photo-placeholder">${animalSpeciesIcon(a)}</div>`}</div><label class="file-label">Выбрать фото<input id="animalPhotoFile" type="file" accept="image/*" hidden></label><div class="actions"><button type="button" class="primary photo-save" disabled>Сохранить фото</button>${old?`<button type="button" class="danger photo-delete">Удалить фото</button>`:''}</div></div>`;document.body.append(wrap);const close=()=>wrap.remove();wrap.querySelector('.photo-close').onclick=close;wrap.addEventListener('click',e=>{if(e.target===wrap)close()});let data=old;const file=wrap.querySelector('#animalPhotoFile');const save=wrap.querySelector('.photo-save');file.onchange=async()=>{const f=file.files?.[0];if(!f)return;try{data=await fileToCompressedDataUrl(f);wrap.querySelector('.photo-preview').innerHTML=`<img src="${esc(data)}" alt="Предпросмотр">`;save.disabled=false;}catch(e){alert(e.message)}};save.onclick=async()=>{try{save.disabled=true;await api(`animals/${a.id}/photo`,{method:'PUT',body:JSON.stringify({photo_data:data})});state.animals=(await api('animals')).animals;a=state.animals.find(x=>x.id===a.id)||a;if(state.animal?.id===a.id)state.animal=a;close();after?.(a);}catch(e){save.disabled=false;alert(e.message)}};wrap.querySelector('.photo-delete')?.addEventListener('click',async()=>{if(!confirm('Удалить фото профиля?'))return;try{await api(`animals/${a.id}/photo`,{method:'DELETE'});state.animals=(await api('animals')).animals;a=state.animals.find(x=>x.id===a.id)||a;if(state.animal?.id===a.id)state.animal=a;close();after?.(a);}catch(e){alert(e.message)}});wrap.querySelector('.file-label').focus?.()}
 async function loadAnimalCatalog(){
   if(state.animalCatalog?.length) return state.animalCatalog;
   try{ const d=await api('animal-catalog'); state.animalCatalog=Array.isArray(d.catalog)?d.catalog:[]; }
@@ -1344,9 +1306,9 @@ document.querySelectorAll('.export-animal-data').forEach(b=>b.onclick=async e=>{
   }catch(err){try{toast(err.message||'Ошибка экспорта','warn')}catch{alert(err.message)}}
 });
 document.querySelectorAll('.copy-animal-id').forEach(b=>b.onclick=async e=>{e.stopPropagation();const ok=await copyText(b.dataset.id);const prev=b.textContent;b.textContent=ok?'Скопировано':'Ошибка';setTimeout(()=>b.textContent=prev,1400);});
- document.querySelectorAll('.status-edit').forEach(b=>b.onclick=async()=>{const a=state.animals.find(x=>x.id===b.dataset.id);if(!a)return;const status=prompt('Статус: normal / attention / critical',a.status||'normal');if(!['normal','attention','critical'].includes(status||''))return;try{await api(`animals/${a.id}/status`,{method:'PUT',body:JSON.stringify({status})});setAnimals((await api('animals')).animals);if(state.animal?.id===a.id)state.animal=state.animals.find(x=>x.id===a.id)||state.animal;render()}catch(e){alert(e.message)}});
- document.querySelectorAll('.delete-animal').forEach(b=>b.onclick=async()=>{if(!confirm('Удалить животное и все связанные записи? Это действие необратимо.'))return;try{await api(`animals/${b.dataset.id}`,{method:'DELETE'});setAnimals((await api('animals')).animals);const pref=getSettings();state.animal=state.animals.find(a=>a.name===pref.default_animal)||state.animals[0]||null;if(state.animal){state.skills=(await api(`animals/${state.animal.id}/skills`)).skills;await loadDefaults()}applySettings();render()}catch(x){alert(x.message)}});
- document.querySelectorAll('.detach-animal').forEach(b=>b.onclick=async e=>{e.stopPropagation();const a=state.animals.find(x=>x.id===b.dataset.id);if(!a)return;if(!confirm(`Убрать «${a.name}» из вашего окружения? Данные животного и доступ владельца сохранятся.`))return;try{await api(`animals/${a.id}`,{method:'DELETE'});setAnimals((await api('animals')).animals);if(state.animal?.id===a.id){state.animal=state.animals[0]||null;state.skills=[];saveActiveAnimal()}applySettings();render();try{toast(`«${a.name}» убрано из вашего окружения`,'ok')}catch{}}catch(x){alert(x.message||'Не удалось убрать животное из окружения')}});
+ document.querySelectorAll('.status-edit').forEach(b=>b.onclick=async()=>{const a=state.animals.find(x=>x.id===b.dataset.id);if(!a)return;const status=prompt('Статус: normal / attention / critical',a.status||'normal');if(!['normal','attention','critical'].includes(status||''))return;try{await api(`animals/${a.id}/status`,{method:'PUT',body:JSON.stringify({status})});state.animals=(await api('animals')).animals;if(state.animal?.id===a.id)state.animal=state.animals.find(x=>x.id===a.id)||state.animal;render()}catch(e){alert(e.message)}});
+ document.querySelectorAll('.delete-animal').forEach(b=>b.onclick=async()=>{if(!confirm('Удалить животное и все связанные записи? Это действие необратимо.'))return;try{await api(`animals/${b.dataset.id}`,{method:'DELETE'});state.animals=(await api('animals')).animals;const pref=getSettings();state.animal=state.animals.find(a=>a.name===pref.default_animal)||state.animals[0]||null;if(state.animal){state.skills=(await api(`animals/${state.animal.id}/skills`)).skills;await loadDefaults()}applySettings();render()}catch(x){alert(x.message)}});
+ document.querySelectorAll('.detach-animal').forEach(b=>b.onclick=async e=>{e.stopPropagation();const a=state.animals.find(x=>x.id===b.dataset.id);if(!a)return;if(!confirm(`Убрать «${a.name}» из вашего окружения? Данные животного и доступ владельца сохранятся.`))return;try{await api(`animals/${a.id}`,{method:'DELETE'});state.animals=(await api('animals')).animals;if(state.animal?.id===a.id){state.animal=state.animals[0]||null;state.skills=[];saveActiveAnimal()}applySettings();render();try{toast(`«${a.name}» убрано из вашего окружения`,'ok')}catch{}}catch(x){alert(x.message||'Не удалось убрать животное из окружения')}});
 const modal=document.querySelector('#animalAddModal');
 
 if(modal){
@@ -1420,7 +1382,7 @@ modal.querySelector('#joinAnimalSubmit')?.addEventListener('click',async()=>{
   if(!aid){ alert('Введите ID животного'); return; }
   try{
     const res=await api('animals/access',{method:'POST',body:JSON.stringify({animal_id:aid})});
-    setAnimals((await api('animals')).animals);
+    state.animals=(await api('animals')).animals;
     state.animal=state.animals.find(x=>x.id===aid)||state.animals.find(x=>x.id===res?.animal?.id)||state.animal;saveActiveAnimal();
     if(state.animal){ try{ state.skills=(await api(`animals/${state.animal.id}/skills`)).skills; }catch(_){}}
     close();
@@ -1510,7 +1472,7 @@ if(!newId) throw new Error('Сервер не вернул ID созданног
 if(mode==='photo' && createPhotoData){
   try{ await api(`animals/${newId}/photo`,{method:'PUT',body:JSON.stringify({photo_data:createPhotoData})}); }catch(pe){ console.warn('photo upload failed',pe); }
 }
-setAnimals((await api('animals')).animals);
+state.animals=(await api('animals')).animals;
 state.animal=state.animals.find(x=>x.id===newId)||state.animals.find(x=>x.name===payload.name)||null;
 if(!state.animal) throw new Error('Животное создано на сервере, но не вернулось в список. Обновите страницу и проверьте доступ.');
 state.skills=state.animal?(await api(`animals/${state.animal.id}/skills`)).skills:[];
@@ -1559,7 +1521,7 @@ async function editAnimalProfile(a,after){
      await api(`animals/${a.id}`,{method:'PUT',body:JSON.stringify(payload)});
      if(photoAction==='set')await api(`animals/${a.id}/photo`,{method:'PUT',body:JSON.stringify({photo_data:photoData})});
      if(photoAction==='delete')await api(`animals/${a.id}/photo`,{method:'DELETE'});
-     setAnimals((await api('animals')).animals);
+     state.animals=(await api('animals')).animals;
      if(state.animal?.id===a.id)state.animal=state.animals.find(x=>x.id===a.id)||state.animal;
      close();if(after)after();
    }catch(err){alert(err.message)}
