@@ -236,8 +236,6 @@ async function ensureSchema(){
     await db.sql`ALTER TABLE observations ADD COLUMN IF NOT EXISTS activity integer`;
     // normalize only nulls; leave valid values as-is
     await db.sql`UPDATE animals SET avatar_icon='1' WHERE avatar_icon IS NULL OR btrim(avatar_icon)=''`;
-    // Self-heal legacy installations: keeper access must always have a real environment link.
-    await db.sql`CREATE TABLE IF NOT EXISTS animal_access (user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE, animal_id text NOT NULL REFERENCES animals(id) ON DELETE CASCADE, PRIMARY KEY(user_id, animal_id))`;
     // animal_access uniqueness for join-by-id
     await db.sql`CREATE UNIQUE INDEX IF NOT EXISTS animal_access_user_animal_unique ON animal_access(user_id, animal_id)`;
     // Production: audit trail (042) — safe if migrations not yet applied manually
@@ -682,28 +680,7 @@ export default async (req) => {
       const subspecies=String(b.subspecies||'').trim();
       const breed=String(b.breed||'').trim();
       await db.sql`INSERT INTO animals(id,name,species,breed,subspecies,sex,birth_date,weight_kg,height_cm,description,owner_id,avatar_icon,microchip) VALUES(${aid},${String(b.name||'').trim()},${species},${breed},${subspecies},${b.sex||null},${b.birth_date||null},${b.weight_kg===''||b.weight_kg==null?null:Number(b.weight_kg)},${b.height_cm===''||b.height_cm==null?null:Number(b.height_cm)},${String(b.description||'')},${ownerId},${avatarIcon},${String(b.microchip||'').trim()||null})`;
-      if(me.effective_role==='keeper'){
-        try{
-          // Для кипера животное должно быть одновременно создано и явно
-          // прикреплено к его окружению. Не полагаемся только на owner_id.
-          await db.sql`INSERT INTO animal_access(user_id,animal_id) VALUES(${me.id},${aid}) ON CONFLICT (user_id, animal_id) DO NOTHING`;
-        }catch(e){
-          // Старые базы могли не иметь таблицу/ограничение animal_access.
-          // Восстанавливаем минимальную структуру и повторяем привязку.
-          try{
-            await db.sql`CREATE TABLE IF NOT EXISTS animal_access (user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE, animal_id text NOT NULL REFERENCES animals(id) ON DELETE CASCADE, PRIMARY KEY(user_id, animal_id))`;
-            await db.sql`CREATE UNIQUE INDEX IF NOT EXISTS animal_access_user_animal_unique ON animal_access(user_id, animal_id)`;
-            await db.sql`INSERT INTO animal_access(user_id,animal_id) VALUES(${me.id},${aid}) ON CONFLICT DO NOTHING`;
-          }catch(e2){
-            console.error('keeper animal access failed',e2?.message||e2);
-            return json({error:'Не удалось добавить животное в окружение кипера: '+String(e2?.message||e?.message||'ошибка базы данных')},500);
-          }
-        }
-        const attached=await db.sql`SELECT 1 FROM animal_access WHERE user_id=${me.id} AND animal_id=${aid} LIMIT 1`;
-        if(!attached.length) return json({error:'Животное создано, но связь с окружением кипера не подтверждена'},500);
-      }
-      const saved=await db.sql`SELECT id,name,species,owner_id FROM animals WHERE id=${aid} LIMIT 1`;
-      if(!saved.length) return json({error:'Животное не сохранилось в базе данных'},500);
+      if(me.effective_role==='keeper') await db.sql`INSERT INTO animal_access(user_id,animal_id) VALUES(${me.id},${aid}) ON CONFLICT DO NOTHING`;
       await audit(me,'animal_created',{animal_id:aid,entity_type:'animal',entity_id:aid,ip:clientIp(req),meta:{created_by_role:me.effective_role}});
       const attention=Array.isArray(b.attention)?b.attention:[];
       for(const x of attention){const title=String(x?.title||'').trim(); const category=String(x?.category||'').trim()||'Другое'; if(title) await db.sql`INSERT INTO animal_attention(id,animal_id,category,title) VALUES(${id()},${aid},${category},${title})`;}

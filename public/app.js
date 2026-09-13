@@ -489,87 +489,24 @@ function settings(c){
 }
 function csv(v){return `"${String(v??'').replaceAll('"','""')}"`}
 function downloadText(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
-function onboardingSteps(){
- const r=state.user?.effective_role||state.user?.role||'owner';
- const roleInfo={
-  owner:{title:'Владелец',text:'Вы отвечаете за животное и его повседневное сопровождение. В MOSTIK вы создаёте профиль, управляете рационом, наблюдениями, домашними заданиями и календарём, а также видите ветеринарные назначения и аналитику.'},
-  keeper:{title:'Кипер',text:'Вы отвечаете за ежедневный уход и наблюдение за животными в своём окружении. В MOSTIK вы можете создать животное, подключить его по ID, вести наблюдения, рацион, обогащение среды, календарь и участвовать в тренировках.'},
-  trainer:{title:'Тренер',text:'Вы отвечаете за обучение животного и развитие навыков. В MOSTIK вы проводите тренировки, создаёте шаблоны, назначаете и проверяете домашние задания, фиксируете наблюдения и анализируете результаты.'},
-  vet:{title:'Ветеринар',text:'Вы отвечаете за ветеринарную часть сопровождения животного. В MOSTIK вы ведёте медицинские записи, назначения и анализы, отслеживаете динамику показателей и используете общий контекст животного.'},
-  admin:{title:'Администратор',text:'Вы управляете системой. В MOSTIK вы работаете с пользователями, ролями, доступом к животным, справочниками, шаблонами, служебными разделами и контролем ошибок.'}
- }[r]||{title:'Пользователь',text:'MOSTIK показывает функции в соответствии с вашей активной ролью.'};
- const steps=[{title:`Ваша роль: ${roleInfo.title}`,text:roleInfo.text,target:null,action:'none'}];
- const add=(title,text,target,action='click',position='right')=>steps.push({title,text,target,action,position});
- const animalExists=!!state.animals?.length;
- const selected=!!state.animal;
- add('Главная', 'Это ваш рабочий центр. Здесь выбирается животное и доступны быстрые действия вашей роли.', 'aside [data-view="home"]');
- add('Откройте раздел «Животные»','Здесь находятся профили животных и действия, доступные вашей роли.','aside [data-view="animals"]');
- if(!animalExists){
-   add('Добавить животное','Нажмите «Добавить животное», чтобы создать новую карточку или подключить существующее животное по ID.','#openAddAnimal');
-   add('Выберите создание','Выберите «Новое животное». Это откроет форму профиля.','#chooseCreateAnimal');
-   add('Введите имя','Введите имя животного. Обучение ждёт реального действия, поэтому просто поставьте курсор и начните вводить имя.','#animalAdd input[name="name"]','input');
-   add('Выберите вид','Начните вводить вид и выберите подходящий вариант из выпадающего списка. Если варианта нет, используйте «Другое…».','#animalAdd input[name="species"]','input');
-   add('Создайте животное','Проверьте профиль и нажмите «Создать животное». После сохранения карточка появится в вашем окружении.','#animalAdd button[type="submit"]');
- }
- if(r==='keeper'){
-   add('Наблюдение','Откройте наблюдения. Кипер фиксирует здесь поведение и состояние животного.','aside [data-view="observations"]');
-   add('Добавьте наблюдение','Выберите действие добавления наблюдения и заполните основные показатели. Если кнопка зависит от выбранного животного, сначала выберите животное в верхней панели.','#content button:not(.secondary)');
-   add('Рацион','Откройте рацион — здесь кипер видит план и фактические записи кормления.','aside [data-view="food"]');
-   add('Запишите кормление','Найдите форму записи питания, заполните приём пищи/количество и сохраните запись.','#foodForm button[type="submit"]','click');
-   add('Обогащение среды','Откройте этот раздел, чтобы фиксировать и планировать подходящее обогащение среды.','aside [data-view="enrichment"]');
-   add('Календарь','Откройте календарь. Здесь находятся расписание и напоминания — отдельного меню напоминаний больше нет.','aside [data-view="calendar"]');
-   add('Создайте напоминание','Откройте создание напоминания, задайте дату и при необходимости повторение: еженедельно или ежемесячно.','#newReminder');
- } else if(r==='owner'){
-   add('Наблюдение','Откройте наблюдения — здесь владелец фиксирует состояние и поведение животного.','aside [data-view="observations"]');
-   add('Рацион','Откройте рацион и изучите план питания и записи кормлений.','aside [data-view="food"]');
-   add('Домашнее задание','На главном экране или в тренировочном разделе найдите домашнее задание. Оно выполняется пошагово и после завершения отмечается выполненным.','#content button');
-   add('Календарь','Здесь находятся запланированные события и напоминания.','aside [data-view="calendar"]');
-   add('Ветеринарное назначение','Откройте ветеринарию, чтобы увидеть назначения для выбранного животного.','aside [data-view="vet"]');
-   add('Аналитика','Используйте визуальную аналитику, чтобы видеть изменения и результаты работы.','aside [data-view="analytics"]');
- } else if(r==='trainer'){
-   add('Тренировка','Откройте главный рабочий раздел тренера. Навыки находятся внутри тренировок.','aside [data-view="training"]');
-   add('Создайте шаблон тренировки','В разделе тренировок найдите функцию создания шаблона. Шаблон ускоряет заполнение, но значения можно менять.','#content button');
-   add('Начните тренировку','Выберите запуск тренировочной сессии и пройдите её по шагам.','#content button');
-   add('Завершите тренировку','После выполнения сессии заполните результат и критерии завершения.','#content button');
-   add('Домашнее задание','Создайте или назначьте домашнее задание владельцу и проверьте результат выполнения.','#content button');
-   add('Наблюдение','Фиксируйте наблюдения, которые помогают оценивать обучение и поведение.','aside [data-view="observations"]');
-   add('Аналитика','Смотрите динамику навыков, тренировок и результатов.','aside [data-view="analytics"]');
- } else if(r==='vet'){
-   add('Ветеринария','Это основной медицинский раздел. Здесь ведутся записи по животному.','aside [data-view="vet"]');
-   add('Добавьте ветеринарную запись','Создайте запись о состоянии или назначении и сохраните её в истории.','#content button');
-   add('Анализы','Откройте меню анализов. Здесь фиксируются показатели, единицы, референсы и изменения во времени.','#vet-section-analyses');
-   add('Добавьте результат анализа','Заполните дату, анализ, показатель и результат, затем сохраните.','#analysisForm button[type="submit"]');
-   add('История','Просмотрите медицинскую историю животного и назначения.','#vet-section-history');
-   add('Аналитика','Используйте аналитику для оценки динамики данных.','aside [data-view="analytics"]');
- } else if(r==='admin'){
-   add('Администрирование','Здесь вы управляете пользователями, ролями и доступом к животным.','aside [data-view="admin"]');
-   add('Создайте пользователя','В блоке нового пользователя заполните имя, email, пароль и роли.','#userAdd button[type="submit"]');
-   add('Настройте роли','Роли определяют рабочее меню и права пользователя. Изменения сохраняются отдельной кнопкой.','#content .save-roles');
-   add('Настройте доступ к животным','Выберите животных в карточке пользователя и сохраните доступ.','#content .save-access');
-   add('Справочники и шаблоны','Используйте служебные функции для контроля пользовательских значений, шаблонов и справочников.','#content button');
-   add('Ошибки','Проверяйте технические ошибки приложения и API в служебном разделе.','aside [data-view="admin-errors"]');
-   add('Аналитика','Используйте общую аналитику для контроля работы системы.','aside [data-view="analytics"]');
- }
- steps.push({title:'Обучение завершено',text:`Теперь вы знаете рабочий маршрут роли «${roleInfo.title}». В следующих сессиях MOSTIK не будет заставлять вас повторять этот маршрут, если обучение для этой роли уже пройдено. Его можно запустить снова в настройках.`,target:null,position:'right',action:'none'});
- return steps;
-}
-function startOnboarding(force=false){
- if(!state.user)return;
- if(!force&&localStorage.getItem(onboardingStorageKey())==='1')return;
- let i=0;const steps=onboardingSteps();const old=document.querySelector('#mostikOnboarding');if(old)old.remove();
- const root=document.createElement('div');root.id='mostikOnboarding';root.className='onboarding-layer';root.setAttribute('role','dialog');root.setAttribute('aria-modal','false');
- root.innerHTML=`<div class="onboarding-tip" role="dialog" aria-live="polite"><div class="onboarding-kicker">MOSTIK · пошаговое обучение</div><div id="onbStep"></div><div id="onbHint" class="muted"></div><div class="onboarding-actions"><button type="button" class="secondary" id="onbSkip">Пропустить</button><span id="onbCount" class="muted"></span><button type="button" id="onbNext">Далее</button></div></div>`;document.body.appendChild(root);
- let completed=false,cleanupAction=null;
- const clearFocus=()=>document.querySelectorAll('.onboard-focus').forEach(x=>x.classList.remove('onboard-focus'));
- const placeTip=(el,pos='right')=>{const tip=root.querySelector('.onboarding-tip');if(!tip)return;tip.style.left='';tip.style.top='';tip.style.right='';tip.style.bottom='';tip.classList.remove('is-left','is-right','is-top','is-bottom','is-centered');if(!el){tip.classList.add('is-centered');return}const rr=el.getBoundingClientRect(),gap=14,tw=tip.offsetWidth||390,th=tip.offsetHeight||230;let left=rr.right+gap,top=rr.top,cls='is-right';if(pos==='left'){left=rr.left-tw-gap;cls='is-left'}else if(pos==='bottom'){left=rr.left;top=rr.bottom+gap;cls='is-bottom'}else if(pos==='top'){left=rr.left;top=rr.top-th-gap;cls='is-top'}const pad=12;left=Math.max(pad,Math.min(left,window.innerWidth-tw-pad));top=Math.max(pad,Math.min(top,window.innerHeight-th-pad));tip.style.left=`${left}px`;tip.style.top=`${top}px`;tip.classList.add(cls)};
- const finish=()=>{try{localStorage.setItem(onboardingStorageKey(),'1')}catch{};clearFocus();cleanupAction?.();root.remove();window.removeEventListener('resize',reposition);window.removeEventListener('scroll',reposition,true)};
- const mark=()=>{if(completed)return;completed=true;const next=root.querySelector('#onbNext');next.textContent=i===steps.length-1?'Готово':'Далее';next.disabled=false;root.querySelector('#onbHint').textContent='Шаг выполнен. Нажмите «Далее», чтобы продолжить.'};
- const draw=()=>{cleanupAction?.();cleanupAction=null;const st=steps[i];completed=st.action==='none';clearFocus();root.querySelector('#onbStep').innerHTML=`<h2>${esc(st.title)}</h2><p>${esc(st.text)}</p>`;root.querySelector('#onbCount').textContent=`${i+1} из ${steps.length}`;const next=root.querySelector('#onbNext');next.textContent=st.action==='none'?(i===steps.length-1?'Готово':'Далее'):'Выполните действие';next.disabled=!completed;root.querySelector('#onbHint').textContent=completed?'Можно продолжить.':st.action==='input'?'Начните вводить значение в подсвеченное поле.':st.action==='change'?'Измените значение в подсвеченном поле.':'Нажмите подсвеченную кнопку/раздел и выполните действие.';
- const el=st.target?document.querySelector(st.target):null;if(el){el.classList.add('onboard-focus');el.scrollIntoView?.({behavior:'smooth',block:'nearest',inline:'nearest'});const ev=st.action==='input'?'input':st.action==='change'?'change':'click';const handler=()=>mark();el.addEventListener(ev,handler,{once:true,capture:true});cleanupAction=()=>el.removeEventListener(ev,handler,{capture:true});requestAnimationFrame(()=>setTimeout(()=>placeTip(el,st.position),120))}else placeTip(null)};
- const reposition=()=>{const st=steps[i];placeTip(st.target?document.querySelector(st.target):null,st.position)};
- root.querySelector('#onbSkip').onclick=finish;root.querySelector('#onbNext').onclick=()=>{if(!completed)return;if(i===steps.length-1)finish();else{i++;draw()}};window.addEventListener('resize',reposition);window.addEventListener('scroll',reposition,true);draw();
-}
-function onboardingStorageKey(role=state.user?.effective_role||state.user?.role||'owner'){return 'mostik_onboarding_done:'+(state.user?.id||state.user?.email||'anon')+':'+role}
+function onboardingSteps(){return [
+ {title:'Старт: рабочее место',text:'Сейчас MOSTIK проведёт вас по приложению пошагово. На каждом этапе сначала прочитайте подсказку, затем выполните действие в подсвеченной области.',target:'aside [data-view="home"]',position:'right',action:'click'},
+ {title:'1. Выберите животное',text:'Выберите конкретное животное в верхней панели. После выбора MOSTIK будет подставлять его в рабочие формы.',target:'#animal',position:'bottom',action:'change'},
+ {title:'2. Откройте профиль животного',text:'Перейдите в «Животные». Здесь находятся карточка, ID, статус, особенности и доступные действия.',target:'aside [data-view="animals"]',position:'right',action:'click'},
+ {title:'3. Найдите животное',text:'Используйте поиск по имени, виду или породе. Это помогает быстро работать с большим количеством животных.',target:'#animalSearch',position:'bottom',action:'input'},
+ {title:'4. Наблюдение',text:'Откройте «Наблюдение за поведением». Введите первое наблюдение — так MOSTIK начинает формировать историю животного.',target:'aside [data-view="observations"]',position:'right',action:'click'},
+ {title:'5. Рацион',text:'Откройте «Рацион». В формах работают подсказки и автозаполнение. Выберите предложенное значение или используйте «Другое…».',target:'aside [data-view="food"]',position:'right',action:'click'},
+ {title:'6. Шаблоны',text:'Шаблон можно применить к форме одним нажатием. После применения все значения остаются редактируемыми.',target:'aside [data-view="smart-templates"]',position:'right',action:'click'},
+ {title:'7. Тренировка',text:'В тренировке задаются навыки, шаги и критерии. MOSTIK сохраняет результат сессии и историю изменений.',target:'aside [data-view="training"]',position:'right',action:'click'},
+ {title:'8. Календарь',text:'В календаре находятся запланированные действия и напоминания. Повторение задаётся непосредственно при создании.',target:'aside [data-view="calendar"]',position:'right',action:'click'},
+ {title:'9. Ветеринария',text:'Здесь специалист работает с состоянием, назначениями и лекарствами. Для ветеринара доступны также анализы.',target:'aside [data-view="vet"]',position:'right',action:'click'},
+ {title:'10. Аналитика',text:'После накопления данных аналитика показывает динамику, события и результаты работы с животным.',target:'aside [data-view="analytics"]',position:'right',action:'click'},
+ {title:'11. Настройки',text:'В настройках находятся оформление, рабочий контекст, установка приложения и повторное прохождение обучения.',target:'aside [data-view="settings"]',position:'right',action:'click'},
+ {title:'Обучение завершено',text:'Вы прошли основной маршрут MOSTIK. Теперь приложение можно использовать как рабочий инструмент. Обучение можно повторить в любой момент через Настройки.',target:null,position:'right',action:'none'}
+]}
+function startOnboarding(force=false){if(!state.user)return;if(!force&&localStorage.getItem(onboardingStorageKey())==='1')return;let i=0;const steps=onboardingSteps();const old=document.querySelector('#mostikOnboarding');if(old)old.remove();const root=document.createElement('div');root.id='mostikOnboarding';root.className='onboarding-layer';root.setAttribute('role','dialog');root.setAttribute('aria-modal','false');root.innerHTML=`<div class="onboarding-tip" role="dialog" aria-live="polite"><div class="onboarding-kicker">MOSTIK · пошаговое обучение</div><div id="onbStep"></div><div id="onbHint" class="muted"></div><div class="onboarding-actions"><button type="button" class="secondary" id="onbSkip">Пропустить</button><span id="onbCount" class="muted"></span><button type="button" id="onbNext">Выполнить действие</button></div></div>`;document.body.appendChild(root);let completed=false;const clearFocus=()=>document.querySelectorAll('.onboard-focus').forEach(x=>x.classList.remove('onboard-focus'));const placeTip=(el,pos='right')=>{const tip=root.querySelector('.onboarding-tip');if(!tip)return;tip.style.left='';tip.style.top='';tip.style.right='';tip.style.bottom='';tip.classList.remove('is-left','is-right','is-top','is-bottom','is-centered');if(!el){tip.classList.add('is-centered');return}const r=el.getBoundingClientRect();const gap=14,tw=tip.offsetWidth||390,th=tip.offsetHeight||230;let left=r.right+gap,top=r.top,cls='is-right';if(pos==='left'){left=r.left-tw-gap;cls='is-left'}else if(pos==='bottom'){left=r.left;top=r.bottom+gap;cls='is-bottom'}else if(pos==='top'){left=r.left;top=r.top-th-gap;cls='is-top'}const pad=12;left=Math.max(pad,Math.min(left,window.innerWidth-tw-pad));top=Math.max(pad,Math.min(top,window.innerHeight-th-pad));tip.style.left=`${left}px`;tip.style.top=`${top}px`;tip.classList.add(cls)};const finish=()=>{try{localStorage.setItem(onboardingStorageKey(),'1')}catch{};clearFocus();root.remove();window.removeEventListener('resize',reposition);window.removeEventListener('scroll',reposition,true)};const draw=()=>{const st=steps[i];completed=false;clearFocus();root.querySelector('#onbStep').innerHTML=`<h2>${st.title}</h2><p>${st.text}</p>`;root.querySelector('#onbCount').textContent=`${i+1} из ${steps.length}`;const next=root.querySelector('#onbNext');next.textContent=st.action==='none'?'Готово':(st.action==='click'?'Открыть этот раздел':'Выполнить действие');next.disabled=st.action!=='none';root.querySelector('#onbHint').textContent=st.action==='none'?'':'Сначала выполните действие в подсвеченной области — следующий шаг откроется автоматически.';const el=st.target?document.querySelector(st.target):null;if(el){el.classList.add('onboard-focus');el.scrollIntoView?.({behavior:'smooth',block:'nearest',inline:'nearest'});const mark=()=>{if(completed)return;completed=true;next.disabled=false;next.textContent=i===steps.length-1?'Готово':'Далее';root.querySelector('#onbHint').textContent='Готово. Нажмите «Далее», чтобы продолжить.'};el.addEventListener(st.action==='click'?'click':st.action,mark,{once:true,capture:true});requestAnimationFrame(()=>setTimeout(()=>placeTip(el,st.position),120))}else placeTip(null)};const reposition=()=>{const st=steps[i];placeTip(st.target?document.querySelector(st.target):null,st.position)};root.querySelector('#onbSkip').onclick=finish;root.querySelector('#onbNext').onclick=()=>{if(!completed&&steps[i].action!=='none')return;if(i===steps.length-1)finish();else{i++;draw()}};window.addEventListener('resize',reposition);window.addEventListener('scroll',reposition,true);draw()}
+
+function onboardingStorageKey(){return 'mostik_onboarding_done:'+(state.user?.id||state.user?.email||'anon')}
 function maybeStartOnboarding(){if(localStorage.getItem(onboardingStorageKey())!=='1')startOnboarding(false)}
 
 function initConnectivityBanner(){
@@ -1451,7 +1388,7 @@ document.querySelector('#openAddAnimal')?.addEventListener('click',open);
 document.querySelector('#openAddAnimalEmpty')?.addEventListener('click',open);
 const openJoin=()=>{open(); setTimeout(()=>setAddMode('join'),0);};
 document.querySelector('#openJoinAnimalEmpty')?.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();openJoin();});
-const bj=document.querySelector('#openJoinAnimalEmpty'); if(bj) bj.onclick=e=>{e.preventDefault();e.stopPropagation();openJoin();};modal.addEventListener('click',e=>{if(e.target===modal)close()});document.querySelector('#closeAddAnimal').onclick=close;document.querySelector('#cancelAddAnimal').onclick=close;document.addEventListener('keydown',function escModal(e){if(e.key==='Escape'&&!modal.hidden)close()},{once:false});
+const bj=document.querySelector('#openJoinAnimalEmpty'); if(bj) bj.onclick=e=>{e.preventDefault();e.stopPropagation();openJoin();};modal.addEventListener('click',e=>{if(e.target===modal)close()});document.querySelector('#closeAddAnimal')?.addEventListener('click',close);document.addEventListener('keydown',function escModal(e){if(e.key==='Escape'&&!modal.hidden)close()},{once:false});
  let ai=0;const addAttention=()=>{ai++;const d=document.createElement('div');d.className='attention-edit';d.innerHTML=`<label>Категория<select name="attention_category_${ai}"><option>Слух</option><option>Зрение</option><option>Здоровье</option><option>Аллергия</option><option>Опорно-двигательная система</option><option>Обоняние</option><option>Поведение</option><option>Другое</option></select></label><label>Что требует внимания<input name="attention_title_${ai}" placeholder="Например: аллергия на..." ></label><button type="button" class="danger remove-attention" aria-label="Удалить особенность">×</button>`;d.querySelector('.remove-attention').onclick=()=>d.remove();modal.querySelector('#attentionFields').append(d)};modal.querySelector('#addAttention').onclick=addAttention;// Avatar picker wiring
 let selectedIconId='';
 let createPhotoData=null;

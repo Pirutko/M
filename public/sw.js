@@ -1,4 +1,4 @@
-const CACHE = 'mostik-v5.3.22-cache';
+const CACHE = 'mostik-v5.3.20-cache';
 const STATIC = [
   '/',
   '/app.css',
