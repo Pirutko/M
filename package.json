@@ -1,6 +1,17 @@
-{
+﻿{
   "name": "mostik",
   "version": "5.3.24",
   "private": true,
-  "description": "MOSTIK — единое пространство для владельца, тренера, ветеринара и кипера"
+  "description": "MOSTIK — единое пространство для владельца, тренера, ветеринара и кипера",
+  "scripts": {
+    "build": "node -e \"console.log('MOSTIK: static site, no build step required')\""
+  },
+  "dependencies": {
+    "@netlify/database": "^2.0.1",
+    "@netlify/functions": "^6.0.0",
+    "postgres": "^3.4.9"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
 }
