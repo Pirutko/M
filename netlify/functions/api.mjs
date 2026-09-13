@@ -719,8 +719,20 @@ export default async (req) => {
   }
   if(animalIdMatch && req.method==='DELETE'){
     const aid=animalIdMatch[1];
-    const row=await db.sql`SELECT id,owner_id FROM animals WHERE id=${aid}`; if(!row.length)return json({error:'Животное не найдено'},404);
-    if(me.role!=='admin' && !(await allowedAnimal(me,aid)))return json({error:'Удалять животное можно только из своего окружения'},403);
+    const row=await db.sql`SELECT id,owner_id FROM animals WHERE id=${aid}`;
+    if(!row.length)return json({error:'Животное не найдено'},404);
+
+    // Киппер не удаляет животное из системы: он только снимает животное со своего окружения.
+    if(me.effective_role==='keeper'){
+      const access=await db.sql`SELECT 1 FROM animal_access WHERE user_id=${me.id} AND animal_id=${aid} LIMIT 1`;
+      if(!access.length)return json({error:'Животное не находится в вашем окружении'},404);
+      await db.sql`DELETE FROM animal_access WHERE user_id=${me.id} AND animal_id=${aid}`;
+      await audit(me,'animal_detached',{animal_id:aid,entity_type:'animal',entity_id:aid,ip:clientIp(req),meta:{action:'remove_from_keeper_environment'}});
+      return json({ok:true,detached:true});
+    }
+
+    // Полное удаление разрешено только администратору или владельцу своего животного.
+    if(me.role!=='admin' && !(me.effective_role==='owner' && row[0].owner_id===me.id))return json({error:'Удалять животное полностью может только владелец или администратор'},403);
     await db.sql`DELETE FROM session_skills WHERE session_id IN (SELECT id FROM sessions WHERE animal_id=${aid})`;
     await db.sql`DELETE FROM sessions WHERE animal_id=${aid}`;
     await db.sql`DELETE FROM animals WHERE id=${aid}`;
