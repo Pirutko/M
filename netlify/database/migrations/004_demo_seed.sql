@@ -108,14 +108,3 @@ SELECT 'demo-food-'||n,
        'Демонстрационная запись питания'
 FROM generate_series(1,25) n
 ON CONFLICT (id) DO NOTHING;
-
--- Demo reminders so calendar/nav badges have content
-INSERT INTO reminders(id,animal_id,user_id,author_id,title,details,remind_at,repeat_type,enabled)
-VALUES
-('demo-rem-1','demo-animal-baikal','demo-owner','demo-owner','Дать Омега-3','После утреннего кормления',now()+interval '2 hours','daily',true),
-('demo-rem-2','demo-animal-baikal','demo-trainer','demo-trainer','Короткая тренировка «Сидеть»','5 минут, спокойная обстановка',now()+interval '1 day','once',true),
-('demo-rem-3','demo-animal-dymka','demo-owner2','demo-vet','Курс препарата А','Вечерняя доза',now()+interval '5 hours','daily',true),
-('demo-rem-4','demo-animal-keks','demo-keeper','demo-keeper','Проверить сено','Досыпать при необходимости',now()+interval '3 hours','daily',true),
-('demo-rem-5','demo-animal-tori','demo-owner5','demo-owner5','Осмотр панциря','Мягкое касание 30 сек',now()+interval '2 days','weekly',true)
-ON CONFLICT (id) DO NOTHING;
-
