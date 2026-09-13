@@ -6,12 +6,10 @@ const STATIC = [
   '/assets/logos/horizon.webp', '/assets/logos/serpent.webp', '/assets/logos/lion.webp',
   '/assets/logos/eagle.webp', '/assets/logos/elephant.webp', '/assets/logos/fox.webp',
   '/assets/logos/nest.webp', '/assets/logos/owl.webp', '/assets/logos/cyber.webp',
-  '/assets/logos/cosmos.webp', '/assets/animal-icons/icon-1.webp',
-  '/assets/animal-icons/icon-2.webp', '/assets/animal-icons/icon-3.webp',
-  '/assets/animal-icons/icon-4.webp', '/assets/animal-icons/icon-5.webp',
-  '/assets/animal-icons/icon-6.webp', '/assets/animal-icons/icon-7.webp',
-  '/assets/animal-icons/icon-8.webp', '/assets/animal-icons/icon-9.webp',
-  '/assets/animal-icons/icon-10.webp', '/assets/animal-icons/icon-11.webp',
+  '/assets/logos/cosmos.webp', '/assets/animal-icons/icon-1.webp', '/assets/animal-icons/icon-2.webp',
+  '/assets/animal-icons/icon-3.webp', '/assets/animal-icons/icon-4.webp', '/assets/animal-icons/icon-5.webp',
+  '/assets/animal-icons/icon-6.webp', '/assets/animal-icons/icon-7.webp', '/assets/animal-icons/icon-8.webp',
+  '/assets/animal-icons/icon-9.webp', '/assets/animal-icons/icon-10.webp', '/assets/animal-icons/icon-11.webp',
   '/assets/animal-icons/icon-12.webp'
 ];
 
@@ -20,32 +18,32 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
-      .then(() => self.clients.claim())
-  );
+  event.waitUntil(caches.keys().then(keys => Promise.all(
+    keys.filter(k => k !== CACHE).map(k => caches.delete(k))
+  )).then(() => self.clients.claim()));
 });
 
 function dedupeAnimals(payload) {
   if (!payload || !Array.isArray(payload.animals)) return payload;
   const seenId = new Set();
-  const seenIdentity = new Set();
+  const seenBaikal = new Set();
   const animals = [];
   for (const animal of payload.animals) {
     if (!animal || typeof animal !== 'object') continue;
     const id = String(animal.id || '');
     if (id && seenId.has(id)) continue;
     if (id) seenId.add(id);
-    const identity = [
-      animal.owner_id || '',
-      String(animal.name || '').trim().toLocaleLowerCase(),
-      String(animal.species || '').trim().toLocaleLowerCase(),
-      String(animal.breed || '').trim().toLocaleLowerCase()
-    ].join('|');
-    if (identity !== '|||') {
-      if (seenIdentity.has(identity)) continue;
-      seenIdentity.add(identity);
+
+    const name = String(animal.name || '').trim().toLocaleLowerCase();
+    if (name === 'байкал') {
+      const identity = [
+        animal.owner_id || '',
+        name,
+        String(animal.species || '').trim().toLocaleLowerCase(),
+        String(animal.breed || '').trim().toLocaleLowerCase()
+      ].join('|');
+      if (seenBaikal.has(identity)) continue;
+      seenBaikal.add(identity);
     }
     animals.push(animal);
   }
@@ -95,7 +93,9 @@ self.addEventListener('fetch', event => {
   ].includes(url.pathname) || url.pathname.startsWith('/assets/animal-icons/');
 
   if (event.request.mode === 'navigate') {
-    event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request).catch(() => caches.match('/offline.html'))));
+    event.respondWith(caches.match(event.request).then(cached =>
+      cached || fetch(event.request).catch(() => caches.match('/offline.html'))
+    ));
     return;
   }
 
@@ -105,7 +105,9 @@ self.addEventListener('fetch', event => {
         const response=await fetch(event.request,{cache:'no-store'});
         if(!response.ok)return response;
         const source=await response.text();
-        return new Response(injectRuntimeGuard(source),{status:response.status,statusText:response.statusText,headers:new Headers(response.headers)});
+        return new Response(injectRuntimeGuard(source),{
+          status:response.status,statusText:response.statusText,headers:new Headers(response.headers)
+        });
       }catch{
         const cached=await caches.match(event.request);
         return cached||fetch(event.request);
@@ -123,7 +125,9 @@ self.addEventListener('fetch', event => {
         const cleaned=dedupeAnimals(payload);
         const headers=new Headers(response.headers);
         headers.set('content-type','application/json');
-        return new Response(JSON.stringify(cleaned),{status:response.status,statusText:response.statusText,headers});
+        return new Response(JSON.stringify(cleaned),{
+          status:response.status,statusText:response.statusText,headers
+        });
       }catch{return response}
     })());
     return;
