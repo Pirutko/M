@@ -244,7 +244,7 @@ function smartApplyPayload(form,payload){
 }
 async function smartEnhanceForm(form){
   if(!form||form.dataset.smartEnhanced==='1')return;
-  const els=[...form.querySelectorAll('input[name],select[name],textarea[name]')].filter(el=>SMART_FIELD_MAP[el.name]);
+  const els=[...form.querySelectorAll('input[name],select[name],textarea[name]')].filter(el=>SMART_FIELD_MAP[el.name] && !(el.closest('.animal-form') && ['species','subspecies'].includes(el.name)));
   if(!els.length)return;
   form.dataset.smartEnhanced='1';
   const section=smartSectionFor(els[0]);
@@ -1135,31 +1135,90 @@ async function loadAnimalCatalog(){
   catch(e){ state.animalCatalog=[]; }
   return state.animalCatalog;
 }
+const ANIMAL_CATALOG_FALLBACK=[
+ ['Сурикат','Зоопарк'],['Лемур кошачий','Зоопарк'],['Малая панда','Зоопарк'],['Слон азиатский','Зоопарк'],['Лев','Зоопарк'],['Тигр','Зоопарк'],['Капибара','Зоопарк'],['Выдра восточная бескоготная','Зоопарк'],['Горилла','Зоопарк'],['Двупалый ленивец','Зоопарк'],['Белый носорог','Зоопарк'],['Верблюд двугорбый','Зоопарк'],['Калифорнийский морской лев','Зоопарк'],['Пингвин Гумбольдта','Зоопарк'],['Жираф','Зоопарк'],['Африканский пингвин','Зоопарк'],['Шимпанзе','Зоопарк'],['Страус африканский','Зоопарк'],['Луговая собачка чернохвостая','Зоопарк'],['Кистеухая свинья','Зоопарк'],
+ ['Собака','Домашнее животное'],['Кошка','Домашнее животное'],['Кролик','Домашнее животное'],['Морская свинка','Домашнее животное'],['Хомяк','Домашнее животное'],['Лошадь','Домашнее животное'],['Курица домашняя','Домашнее животное'],['Волнистый попугай','Домашнее животное'],['Попугай','Домашнее животное'],['Черепаха домашняя','Домашнее животное']
+].map(([species,category])=>({species,category:category==='Зоопарк'?'zoo':'domestic',subspecies:[]}));
+function animalCatalogRows(){
+  return Array.isArray(state.animalCatalog)&&state.animalCatalog.length?state.animalCatalog:ANIMAL_CATALOG_FALLBACK;
+}
+function uniqueCatalogSpecies(){
+  const seen=new Map();
+  for(const x of animalCatalogRows()){
+    const v=String(x?.species||'').trim(); if(!v)continue;
+    const k=v.toLocaleLowerCase('ru-RU'); if(!seen.has(k))seen.set(k,x);
+  }
+  return [...seen.values()].sort((a,b)=>String(a.species).localeCompare(String(b.species),'ru'));
+}
+function animalCatalogSubspecies(species){
+  const sp=String(species||'').trim().toLocaleLowerCase('ru-RU');
+  const seen=new Set(), out=[];
+  for(const x of animalCatalogRows()){
+    if(String(x?.species||'').trim().toLocaleLowerCase('ru-RU')!==sp)continue;
+    for(const v of (Array.isArray(x?.subspecies)?x.subspecies:[])){
+      const t=String(v||'').trim(), k=t.toLocaleLowerCase('ru-RU');
+      if(t&&!seen.has(k)){seen.add(k);out.push(t)}
+    }
+  }
+  return out.sort((a,b)=>a.localeCompare(b,'ru'));
+}
+function setupAnimalCombobox(input,{kind,onSelect}={}){
+  if(!input || input.dataset.animalCombo==='1')return;
+  input.dataset.animalCombo='1';
+  const label=input.closest('label');
+  const host=document.createElement('div'); host.className='animal-combobox';
+  input.parentNode.insertBefore(host,input); host.appendChild(input);
+  const menu=document.createElement('div'); menu.className='animal-combobox-menu'; menu.setAttribute('role','listbox'); menu.hidden=true; host.appendChild(menu);
+  const getItems=()=>{
+    if(kind==='species')return uniqueCatalogSpecies().map(x=>({value:x.species,meta:x.category==='zoo'?'Зоопарк':'Домашнее животное',scientific:x.scientific_name||''}));
+    return animalCatalogSubspecies(input.closest('form')?.querySelector('[name="species"]')?.value).map(x=>({value:x,meta:'Подвид'}));
+  };
+  const show=()=>{
+    const q=String(input.value||'').trim().toLocaleLowerCase('ru-RU');
+    let items=getItems();
+    if(q)items=items.filter(x=>String(x.value).toLocaleLowerCase('ru-RU').includes(q)||String(x.meta||'').toLocaleLowerCase('ru-RU').includes(q));
+    items=items.slice(0,50);
+    menu.innerHTML=items.map((x,i)=>`<button type="button" class="animal-combobox-option" role="option" data-value="${esc(x.value)}"><span>${esc(x.value)}</span><small>${esc([x.meta,x.scientific].filter(Boolean).join(' · '))}</small></button>`).join('');
+    const other=`<button type="button" class="animal-combobox-other" role="option" data-other="1">＋ Другое… <small>ввести свой вариант</small></button>`;
+    menu.insertAdjacentHTML('beforeend',other);
+    menu.hidden=false;
+    menu.querySelectorAll('[data-value]').forEach(b=>b.onclick=()=>{input.value=b.dataset.value;hide();onSelect?.(input.value)});
+    menu.querySelector('[data-other]')?.addEventListener('click',()=>{
+      const v=prompt(kind==='species'?'Введите свой вид животного:':'Введите свой подвид животного:',input.value||'');
+      if(v?.trim()){input.value=v.trim();hide();onSelect?.(input.value,true);smartRemember(input,v)}
+    });
+  };
+  const hide=()=>{menu.hidden=true};
+  input.addEventListener('focus',show);
+  input.addEventListener('input',show);
+  input.addEventListener('change',()=>onSelect?.(input.value));
+  input.addEventListener('keydown',e=>{if(e.key==='Escape')hide(); if(e.key==='ArrowDown'&&!menu.hidden){e.preventDefault();menu.querySelector('button')?.focus()} });
+  document.addEventListener('click',e=>{if(!host.contains(e.target))hide()});
+  return {show,hide,menu};
+}
 function bindAnimalCatalogForm(modal, role){
   const speciesInput=modal?.querySelector('[name="species"]');
   const subtypeInput=modal?.querySelector('[name="subspecies"]');
   const breedInput=modal?.querySelector('[name="breed"]');
   if(!speciesInput)return;
-  const catalog=state.animalCatalog||[];
   const speciesList=modal.querySelector('#animalSpeciesList');
   const subtypeList=modal.querySelector('#animalSubspeciesList');
-  const fillSpecies=()=>{
-    const q=String(speciesInput.value||'').trim().toLocaleLowerCase('ru-RU');
-    const rows=catalog.filter(x=>!q||String(x.species).toLocaleLowerCase('ru-RU').includes(q)).slice(0,30);
-    if(speciesList) speciesList.innerHTML=rows.map(x=>`<option value="${esc(x.species)}">${esc(x.category==='zoo'?'Зоопарк':'Домашнее животное')}${x.scientific_name?' · '+esc(x.scientific_name):''}</option>`).join('');
+  // Native datalists are kept empty: the custom combobox below gives identical
+  // filtering behaviour in desktop Firefox/Chrome and on mobile.
+  if(speciesList)speciesList.innerHTML='';
+  if(subtypeList)subtypeList.innerHTML='';
+  const refreshSubspecies=()=>{
+    const vals=animalCatalogSubspecies(speciesInput.value);
+    if(subtypeInput && !vals.some(v=>v.toLocaleLowerCase('ru-RU')===String(subtypeInput.value||'').trim().toLocaleLowerCase('ru-RU'))) subtypeInput.value='';
+    if(subtypeList)subtypeList.innerHTML=vals.map(v=>`<option value="${esc(v)}"></option>`).join('');
   };
-  const fillSubspecies=()=>{
-    if(!subtypeList)return;
-    const row=catalog.find(x=>String(x.species).toLocaleLowerCase('ru-RU')===String(speciesInput.value||'').trim().toLocaleLowerCase('ru-RU'));
-    subtypeList.innerHTML=(row?.subspecies||[]).map(x=>`<option value="${esc(x)}"></option>`).join('');
-    if(row?.subspecies?.length===1 && subtypeInput && !subtypeInput.value) subtypeInput.value=row.subspecies[0];
-  };
-  speciesInput.addEventListener('input',()=>{fillSpecies();fillSubspecies()});
-  speciesInput.addEventListener('change',fillSubspecies);
-  fillSpecies(); fillSubspecies();
+  setupAnimalCombobox(speciesInput,{kind:'species',onSelect:()=>{refreshSubspecies();subtypeInput?.focus()}});
+  if(subtypeInput)setupAnimalCombobox(subtypeInput,{kind:'subspecies'});
+  speciesInput.addEventListener('input',refreshSubspecies);
+  speciesInput.addEventListener('change',refreshSubspecies);
+  refreshSubspecies();
   if(role==='keeper' && breedInput) breedInput.removeAttribute('name');
 }
-
 function animals(c){const r=state.user.effective_role;const canManage=['admin','owner'].includes(r);const canJoin=['admin','owner','trainer','keeper','vet'].includes(r);c.innerHTML=`<div class="top"><div><h2>Животные</h2><p class="muted">Все животные в аккуратных карточках. Выберите питомца, чтобы открыть его рабочий профиль.</p></div>${canJoin?`<button type="button" class="primary add-animal-btn" id="openAddAnimal">＋ Добавить животное</button>`:''}</div>${state.animals.length?`<div class="toolbar-row"><input type="search" id="animalSearch" class="search-input" placeholder="Поиск по имени, виду, породе…" autocomplete="off"></div><div class="animal-cards" id="animalCards">${state.animals.map(a=>{const isSel=state.animal?.id===a.id;return `<article class="animal-card ${isSel?'selected':''}"><div class="animal-card-main animal-open" data-id="${a.id}" role="button" tabindex="0">${photoMarkup(a)}<span class="animal-card-body"><b>${esc(a.name)}</b><small>${esc(a.species||'Вид не указан')}${a.breed?' · '+esc(a.breed):''}</small><span class="animal-meta"><em>${isSel?'Выбрано':'Открыть профиль'}</em><em>${animalStatusIcon(a.status)} ${esc(animalStatusLabel(a.status))}</em>${isSel?`<em>${state.skills.filter(s=>s.mastered).length}/${state.skills.length||0} навыков освоено</em>`:''}</span></span></div><div class="animal-card-actions"><button type="button" class="secondary copy-animal-id" data-id="${a.id}" title="Код животного для семьи, ветеринара или тренера">Код животного</button><button type="button" class="secondary print-animal-card" data-id="${a.id}">Печать</button><button type="button" class="secondary export-animal-data" data-id="${a.id}" title="JSON-бэкап данных животного">↓ Экспорт</button><button type="button" class="secondary dev-open" data-id="${a.id}">✦ Особенности</button>${['admin','owner','vet'].includes(r)?`<button type="button" class="secondary status-edit" data-id="${a.id}">Статус</button>`:''}${canManage?`<button type="button" class="secondary edit-animal-profile" data-id="${a.id}">Редактировать профиль</button><button type="button" class="danger delete-animal" data-id="${a.id}">Удалить</button>`:''}${r==='keeper'?`<button type="button" class="danger detach-animal" data-id="${a.id}">Удалить из моего окружения</button>`:''}</div></article>`}).join('')}</div>`:`<div class="card empty-state empty-hero"><div class="empty-icon" aria-hidden="true">🐕</div><h3>Пока нет животных</h3><p class="muted">Создайте карточку питомца или подключитесь по коду — после этого откроются журнал, рацион, ветеринария, тренировки и аналитика.</p><ul class="empty-preview muted"><li>Общий журнал событий</li><li>План и факт рациона</li><li>Назначения и графики лекарств</li><li>Тренировки и домашние задания</li></ul>${canJoin?`<div class="empty-actions"><button type="button" class="primary" id="openAddAnimalEmpty">＋ Новое животное</button><button type="button" class="secondary" id="openJoinAnimalEmpty">Ввести код животного</button></div>`:''}</div>`}${canJoin?`<div id="animalAddModal" class="modal-backdrop" hidden><div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="animalAddTitle"><div class="top"><div><h2 id="animalAddTitle">Добавить животное</h2><p class="muted">Создайте новое животное или подключитесь к существующему по его ID.</p></div><button type="button" class="secondary modal-close" id="closeAddAnimal" aria-label="Закрыть">×</button></div><form id="animalAdd" class="animal-form modal-form">
 <div id="addAnimalStepChoice" class="add-animal-choice-grid">
   <button type="button" class="add-animal-choice" id="chooseCreateAnimal" data-add-choice="create">
@@ -1387,14 +1446,19 @@ for(let i=1;i<=ai;i++){const t=f[`attention_title_${i}`];if(t)attention.push({ca
 const payload={name:f.name,species:f.species,breed:r==='keeper'?'':f.breed,subspecies:r==='keeper'?String(f.subspecies||'').trim():'',sex:f.sex||null,birth_date:f.birth_date||null,weight_kg:f.weight_kg===''?null:Number(f.weight_kg),height_cm:f.height_cm===''?null:Number(f.height_cm),description:String(f.description||''),owner_id:f.owner_id,microchip:String(f.microchip||'').trim()||null,attention};
 if(mode==='icon' && selectedIconId){ payload.avatar_icon=selectedIconId; }
 // if no icon selected and mode icon — backend picks random
-const created=await api('animals',{method:'POST',body:JSON.stringify(payload)});
-const newId=created.id;
+const submitBtn=e.target.querySelector('button[type=submit]');
+if(submitBtn){submitBtn.disabled=true;submitBtn.dataset.originalText=submitBtn.textContent;submitBtn.textContent='Сохраняю…';}
+let created;
+try{ created=await api('animals',{method:'POST',body:JSON.stringify(payload)}); }catch(err){ if(submitBtn){submitBtn.disabled=false;submitBtn.textContent=submitBtn.dataset.originalText||'Создать животное';} throw err; }
+const newId=created?.id;
+if(!newId) throw new Error('Сервер не вернул ID созданного животного');
 // if photo mode and photo chosen — upload after create
 if(mode==='photo' && createPhotoData){
   try{ await api(`animals/${newId}/photo`,{method:'PUT',body:JSON.stringify({photo_data:createPhotoData})}); }catch(pe){ console.warn('photo upload failed',pe); }
 }
 state.animals=(await api('animals')).animals;
-state.animal=state.animals.find(x=>x.id===newId)||state.animals.find(x=>x.name===payload.name)||state.animals[0];
+state.animal=state.animals.find(x=>x.id===newId)||state.animals.find(x=>x.name===payload.name)||null;
+if(!state.animal) throw new Error('Животное создано на сервере, но не вернулось в список. Обновите страницу и проверьте доступ.');
 state.skills=state.animal?(await api(`animals/${state.animal.id}/skills`)).skills:[];
 close();render();try{toast('Животное «'+(payload.name||'')+'» создано','ok')}catch{};try{updateNavBadges()}catch{}}catch(x){try{toast(x.message||'Не удалось создать животное','warn')}catch{alert(x.message)}}};}
 }
@@ -1415,6 +1479,7 @@ async function editAnimalProfile(a,after){
  <div class="modal-actions"><button type="submit">Сохранить</button><button type="button" class="secondary" id="animalProfileCancel">Отмена</button></div>
  </form></div>`;
  document.body.appendChild(wrap);document.body.classList.add('modal-open');
+ loadAnimalCatalog().then(()=>bindAnimalCatalogForm(wrap,state.user.effective_role)).catch(()=>{});
  const close=()=>{wrap.remove();document.body.classList.remove('modal-open')};
  wrap.querySelector('#animalProfileClose').onclick=close;wrap.querySelector('#animalProfileCancel').onclick=close;wrap.addEventListener('click',e=>{if(e.target===wrap)close()});
  const preview=()=>{const p=wrap.querySelector('#animalProfilePhotoPreview');p.innerHTML=photoData?`<img src="${photoData}" alt="">`:photoMarkup({...a,photo_data:null},'profile-photo')};

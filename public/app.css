@@ -1452,3 +1452,12 @@ input.field-invalid,select.field-invalid,textarea.field-invalid{
 .smart-template-bar{display:flex;gap:14px;align-items:center;justify-content:space-between;padding:12px 14px;margin-bottom:12px;border:1px solid var(--border,#ddd);border-radius:12px;background:var(--surface-soft,#f7f7f7)}
 .smart-template-bar small{display:block;color:var(--muted,#777);margin-top:3px}.smart-template-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.smart-template-actions select{min-width:190px}.smart-other{font-size:12px}
 @media(max-width:760px){.smart-template-bar{align-items:flex-start;flex-direction:column}.smart-template-actions{width:100%}.smart-template-actions select{flex:1}}
+
+/* Animal catalog searchable dropdown */
+.animal-combobox{position:relative;width:100%}
+.animal-combobox-menu{position:absolute;z-index:1200;left:0;right:0;top:calc(100% + 4px);max-height:280px;overflow:auto;background:var(--card,#fff);border:1px solid var(--line,#d9e0dc);border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.14);padding:5px}
+.animal-combobox-option,.animal-combobox-other{display:flex;width:100%;align-items:center;justify-content:space-between;gap:10px;text-align:left;border:0;border-radius:9px;background:transparent;padding:9px 10px;cursor:pointer;font:inherit;color:inherit}
+.animal-combobox-option:hover,.animal-combobox-option:focus-visible,.animal-combobox-other:hover,.animal-combobox-other:focus-visible{background:var(--surface-soft,#f2f5f3);outline:none}
+.animal-combobox-option span,.animal-combobox-other{font-weight:600}
+.animal-combobox-option small,.animal-combobox-other small{display:block;color:var(--muted,#777);font-weight:400;font-size:11px}
+.animal-combobox-other{border-top:1px solid var(--line,#e4e8e5);margin-top:4px;padding-top:10px}
