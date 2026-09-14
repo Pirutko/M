@@ -1,5 +1,3 @@
 -- MOSTIK: legacy Baikal restore intentionally disabled.
 -- Baikal is removed and replaced by migration 056.
 -- Migration 055 is pending and therefore safely becomes a no-op.
-BEGIN;
-COMMIT;
