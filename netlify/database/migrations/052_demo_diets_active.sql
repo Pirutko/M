@@ -41,10 +41,10 @@ ON CONFLICT (id) DO UPDATE SET
   end_date = NULL;
 
 INSERT INTO diet_meals(id, diet_id, day_offset, time_of_day, title, sort_order)
-SELECT 'demo-meal-dymka-am', 'demo-diet-dymka', 0, '07:30', 'Утро', 0
+SELECT 'demo-meal-dymka-am', 'demo-diet-dymka', 0, '07:30'::time, 'Утро', 0
 WHERE EXISTS (SELECT 1 FROM diets WHERE id = 'demo-diet-dymka')
 UNION ALL
-SELECT 'demo-meal-dymka-pm', 'demo-diet-dymka', 0, '18:30', 'Вечер', 1
+SELECT 'demo-meal-dymka-pm', 'demo-diet-dymka', 0, '18:30'::time, 'Вечер', 1
 WHERE EXISTS (SELECT 1 FROM diets WHERE id = 'demo-diet-dymka')
 ON CONFLICT (id) DO UPDATE SET
   title = EXCLUDED.title,
