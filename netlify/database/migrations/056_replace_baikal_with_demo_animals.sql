@@ -1,7 +1,6 @@
 -- MOSTIK v5.4 — replace the old Baikal demo with five fresh demo animals.
--- Migration 056 is still pending in production, so this file is corrected before first application.
+-- Migration 056 is pending and therefore must not control its own transaction.
 -- Idempotent: only touches demo-* records.
-BEGIN;
 
 -- Remove the old Baikal demo in FK-safe order.
 DELETE FROM session_skills WHERE session_id IN (SELECT id FROM sessions WHERE animal_id='demo-animal-baikal');
@@ -19,7 +18,6 @@ DELETE FROM diets WHERE animal_id='demo-animal-baikal';
 DELETE FROM animal_access WHERE animal_id='demo-animal-baikal';
 DELETE FROM animals WHERE id='demo-animal-baikal';
 
--- Five fresh animals.
 INSERT INTO animals(id,name,species,breed,owner_id) VALUES
 ('demo-animal-archie','Арчи','Собака','Золотистый ретривер','demo-owner'),
 ('demo-animal-nora','Нора','Кошка','Мейн-кун','demo-owner2'),
@@ -36,7 +34,6 @@ INSERT INTO animal_access(user_id,animal_id) VALUES
 ('demo-vet2','demo-animal-archie'),('demo-vet2','demo-animal-sonya')
 ON CONFLICT DO NOTHING;
 
--- Two training skills per animal.
 INSERT INTO skills(id,animal_id,name,signal,goal) VALUES
 ('demo-skill-archie-sit','demo-animal-archie','Сидеть','Сидеть','Спокойно выполнять сигнал'),
 ('demo-skill-archie-place','demo-animal-archie','Место','Место','Оставаться на коврике'),
@@ -63,7 +60,6 @@ INSERT INTO skill_steps(id,skill_id,step_no,title,goal,criterion,bridge,reinforc
 ('demo-step-sonya-2','demo-skill-sonya-station',1,'Станция','Оставаться на месте','30 секунд','жест','пищевое','','переменный')
 ON CONFLICT (id) DO NOTHING;
 
--- Three sessions per animal, with valid 1-5 concentration/arousal values.
 INSERT INTO sessions(id,animal_id,trainer_id,started_at,ended_at,duration_minutes,ending_type,ending_other,success_score,external_stimulus,external_reason,internal_stimulus,internal_reason,concentration,arousal)
 SELECT 'demo-new-session-'||a.code||'-'||n,a.id,
        CASE WHEN n%2=0 THEN 'demo-trainer2' ELSE 'demo-trainer' END,
@@ -83,7 +79,6 @@ FROM (VALUES
 ) AS a(code,skill1,skill2),generate_series(1,3) AS n
 ON CONFLICT DO NOTHING;
 
--- Four observations per animal. All numeric ratings stay within the schema's 1-5 checks.
 INSERT INTO observations(id,animal_id,author_id,observed_at,behavior_note,health_note,arousal,stress,concentration,appetite,pain,sleep,note)
 SELECT 'demo-new-obs-'||a.code||'-'||n,a.id,
        CASE WHEN n%3=0 THEN 'demo-keeper' WHEN n%3=1 THEN 'demo-owner' ELSE 'demo-trainer' END,
@@ -129,11 +124,11 @@ INSERT INTO diet_periods(id,diet_id,animal_id,start_date,end_date) VALUES
 ON CONFLICT (id) DO UPDATE SET start_date=EXCLUDED.start_date,end_date=NULL;
 
 INSERT INTO diet_meals(id,diet_id,day_offset,time_of_day,title,sort_order) VALUES
-('demo-meal-archie-am','demo-diet-archie',0,'08:00','Утро',0),('demo-meal-archie-pm','demo-diet-archie',0,'19:00','Вечер',1),
-('demo-meal-nora-am','demo-diet-nora',0,'08:00','Утро',0),('demo-meal-nora-pm','demo-diet-nora',0,'18:30','Вечер',1),
-('demo-meal-filya-am','demo-diet-filya',0,'09:00','Утро',0),('demo-meal-filya-pm','demo-diet-filya',0,'18:00','Вечер',1),
-('demo-meal-rocky-am','demo-diet-rocky',0,'09:00','Утро',0),('demo-meal-rocky-pm','demo-diet-rocky',0,'17:00','Вечер',1),
-('demo-meal-sonya-am','demo-diet-sonya',0,'10:00','Утро',0),('demo-meal-sonya-pm','demo-diet-sonya',0,'16:00','День',1)
+('demo-meal-archie-am','demo-diet-archie',0,'08:00'::time,'Утро',0),('demo-meal-archie-pm','demo-diet-archie',0,'19:00'::time,'Вечер',1),
+('demo-meal-nora-am','demo-diet-nora',0,'08:00'::time,'Утро',0),('demo-meal-nora-pm','demo-diet-nora',0,'18:30'::time,'Вечер',1),
+('demo-meal-filya-am','demo-diet-filya',0,'09:00'::time,'Утро',0),('demo-meal-filya-pm','demo-diet-filya',0,'18:00'::time,'Вечер',1),
+('demo-meal-rocky-am','demo-diet-rocky',0,'09:00'::time,'Утро',0),('demo-meal-rocky-pm','demo-diet-rocky',0,'17:00'::time,'Вечер',1),
+('demo-meal-sonya-am','demo-diet-sonya',0,'10:00'::time,'Утро',0),('demo-meal-sonya-pm','demo-diet-sonya',0,'16:00'::time,'День',1)
 ON CONFLICT (id) DO UPDATE SET time_of_day=EXCLUDED.time_of_day,title=EXCLUDED.title,sort_order=EXCLUDED.sort_order;
 
 INSERT INTO diet_meal_products(id,meal_id,name,quantity,calories,sort_order) VALUES
@@ -158,5 +153,3 @@ FROM (VALUES
 ('sonya','demo-animal-sonya',5,'Листовая зелень 40 г')
 ) AS a(code,id,ord,food),generate_series(1,3) AS n
 ON CONFLICT (id) DO NOTHING;
-
-COMMIT;
